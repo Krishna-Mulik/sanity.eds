@@ -60,7 +60,7 @@ resulting diff to `tools/sanity/index.js`, same as any other dependency bump.
 
 If publishing to npm isn't wanted, `dist-plugin/sanity.js` can instead be:
 
-- **Loaded from GitHub via jsDelivr** — `import('https://cdn.jsdelivr.net/gh/<owner>/<repo>@1/dist-plugin/sanity.js')`.
+- **Loaded from GitHub via jsDelivr** — `import('https://cdn.jsdelivr.net/gh/Krishna-Mulik/sanity.eds@1/dist-plugin/sanity.js')`.
   Needs `https://cdn.jsdelivr.net` added to the consumer's `script-src`. Auto-updates within a
   pinned major version (`@1`), same tradeoff as the npm range above, but cross-origin.
 - **Vendored by hand** — download a tagged release's `dist-plugin/sanity.js` and commit it
