@@ -1,0 +1,10 @@
+{
+  "total": 2,
+  "offset": 0,
+  "limit": 2,
+  "data": [
+    { "url": "/", "title": "Cairn Supply Co. — Trail packs", "description": "Weatherproof trail packs built for multi-day carries." },
+    { "url": "/journal", "title": "Journal", "description": "Field notes from the trail." }
+  ],
+  ":type": "sheet"
+}

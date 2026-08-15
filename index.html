@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cairn Supply Co. — Trail packs</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Deliberate demo issue: aem.live's "Keeping it 100" guidance says preload hints compete with the LCP candidate for early bandwidth and tend to hurt LCP despite looking like an optimization. -->
+    <link rel="preload" as="image" href="/icons/brand-mark.svg" />
+    <meta property="og:title" content="Trail packs built for the long approach" />
+    <meta property="og:image" content="https://picsum.photos/seed/cairn-trailpack-hero/1600/900" />
+    <!-- og:description intentionally omitted: feeds the SEO section's demo issue -->
+  </head>
+  <body>
+    <!--
+      THESIS: the page's health reads as literal vital signs, never a graded audit report.
+      OWN-WORLD: deep charcoal-teal instrument chassis rendered as translucent glass over the
+      host page; emerald/amber/crimson threshold colour is the only colour; readouts set in a
+      self-hosted instrument monospace, labels in the platform sans; one radius scale, hairline
+      rules, no nested cards.
+      STORY: a developer or author sees the severity on the ball without opening anything, fans
+      out to the section that is failing, reads every finding at once with no accordion to
+      open, then clicks an asset path to jump to the exact element on the page.
+      FIRST VIEWPORT: a docked assistive ball at the page edge carrying the critical count;
+      hovering fans six section bubbles on an arc; choosing one grows a phone-shaped panel out
+      of the ball, with title and severity breakdown above, findings below, and a six-section
+      tab bar at the foot.
+      FORM: Vitals Monitor, candidate 3 of 7, seed key 64d5111a.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish
+      review, the verdict, and DESIGN.md.
+    -->
+    <!--
+      Everything below is a stand-in EDS page (the "host") that the Sanity
+      panel mounts into and diagnoses. It is deliberately a different visual
+      world from the panel itself, to prove the Shadow DOM boundary holds.
+    -->
+    <header class="host-nav">
+      <div class="host-nav-inner">
+        <span class="host-logo">
+          <img class="host-logo-mark" src="/icons/brand-mark.svg" alt="" width="20" height="20" />
+          Cairn Supply Co.
+        </span>
+        <nav>
+          <a href="#">Packs</a>
+          <a href="#">Accessories</a>
+          <a href="#">Journal</a>
+          <a href="#">Stockists</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="host-hero">
+        <img
+          data-sanity-target="hero-image"
+          class="host-hero-image"
+          src="https://picsum.photos/seed/cairn-trailpack-hero/1600/900"
+        />
+        <div class="host-hero-copy">
+          <h1>Trail packs built for the long approach</h1>
+          <p data-sanity-target="hero-subcopy">
+            Since 2014 we've built packs that recieve real trail miles before they ever reach a shelf — tested on
+            the Wonderland Trail, the Colorado Trail, and everywhere in between.
+          </p>
+          <a class="host-cta" href="#">Shop the collection</a>
+        </div>
+      </section>
+
+      <section class="host-content">
+        <h2 data-sanity-target="content-heading">Built from the outside in</h2>
+        <p>
+          Every seam is bar-tacked, every buckle is field-replaceable, and every pack ships with the stitching
+          diagram it was built from. We size for the way packs actually get loaded, not the way they photograph
+          empty.
+        </p>
+        <img
+          data-sanity-target="gallery-image"
+          class="host-content-image"
+          src="https://picsum.photos/seed/cairn-stitching-detail/1200/700"
+        />
+        <p>Straps are cut long and finished short, so a pack bought for a 40-liter trip still carries right at 55.</p>
+      </section>
+
+      <!--
+        Real EDS pages are assembled from named blocks that scripts/aem.js
+        decorates after load, marking each with data-block-status
+        ("loading" -> "loaded", or "error" if decorate() throws). These two
+        sections simulate that lifecycle so Sanity's block-structure check
+        (an EDS-native signal no generic audit tool has any concept of) has
+        something real to prove itself against.
+      -->
+      <div class="section host-blocksection" data-section-status="loaded">
+        <h2>Why crews carry Cairn</h2>
+        <div class="cards block" data-block-name="cards" data-block-status="loaded">
+          <div class="host-card">
+            <h3>Built for rain</h3>
+            <p>Taped seams and a roll-top that actually keeps weather out.</p>
+          </div>
+          <div class="host-card">
+            <h3>Field-repairable</h3>
+            <p>Every buckle and strap is field-replaceable with no tools.</p>
+          </div>
+          <div class="host-card">
+            <h3>Lifetime warranty</h3>
+            <p>We fix or replace it, no matter how many trails it's seen.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section host-blocksection" data-section-status="loaded">
+        <h2>What crews are saying</h2>
+        <!--
+          Intentionally broken: this block's decorate() threw before it
+          rendered anything, exactly like a real content-authoring failure
+          (a bad row, a missing default export, a runtime error). The
+          heading above stays, the reviews silently never appear — the kind
+          of gap an author would never notice without a check that
+          understands what an EDS block is.
+        -->
+        <div class="reviews block" data-block-name="reviews" data-block-status="error"></div>
+      </div>
+    </main>
+
+    <footer class="host-footer">
+      <span>© 2026 Cairn Supply Co.</span>
+      <span>Built on Edge Delivery Services</span>
+    </footer>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

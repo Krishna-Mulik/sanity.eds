@@ -1,0 +1,11 @@
+{
+  "total": 3,
+  "offset": 0,
+  "limit": 3,
+  "data": [
+    { "path": "/", "title": "Cairn Supply Co. — Trail packs", "lastModified": "1735689600" },
+    { "path": "/journal", "title": "Journal", "lastModified": "1735689600" },
+    { "path": "/stockists", "title": "Stockists", "lastModified": "1735689600" }
+  ],
+  ":type": "sheet"
+}

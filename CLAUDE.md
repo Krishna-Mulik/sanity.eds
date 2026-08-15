@@ -1,0 +1,312 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+**Sanity** is an AEM Sidekick plugin for Edge Delivery Services (EDS) sites: a self-contained
+UI that scans a live EDS page for performance, SEO, social/OG, security, and aem.live-limits
+issues, and lets an author or developer jump straight to the offending element on the page.
+
+This repo is currently the **standalone UI build** — a Preact app you run and click through
+via `pnpm dev`. It is not yet wired into a real Sidekick install or a real EDS `scripts.js`;
+`index.html` simulates both (see "Dev harness" below). `PRODUCT.md` and `DESIGN.md` are the
+source of truth for product intent and the visual system, respectively — read them before
+making product or design decisions, not just this file.
+
+## Commands
+
+```
+pnpm install              # install deps (pnpm, not npm — pnpm-lock.yaml is committed)
+pnpm dev                  # vite dev server at http://localhost:5173
+pnpm build                # tsc -b && vite build
+pnpm preview              # serve the production build
+pnpm exec tsc -b --noEmit # typecheck only, no build output
+pnpm test                 # vitest run — unit tests for the scan/check logic
+pnpm test:watch           # vitest, watch mode
+```
+
+There is no lint config (no eslint) — `tsc` and `vitest` are the automated checks. Every
+`src/lib/scan/*.ts` module is split into an impure `gatherX()` (talks to `document`/`fetch`/
+`PerformanceObserver`, not unit tested) and a pure `evaluateX(rawData)` (takes plain data,
+returns `Finding[]`; unit tested in the sibling `*.test.ts`). Follow that split for new checks.
+Visual/rendering behavior still has no DOM-assertion coverage — verify it as below.
+
+### Visual verification
+
+The panel is a floating UI injected via Shadow DOM, so screenshots are the only reliable way
+to review a change — DOM assertions have repeatedly missed real rendering bugs here (stretched
+icons, invisible bubbles, off-screen labels) that were obvious the moment a screenshot was
+taken.
+
+```
+pnpm dev                        # in one terminal
+node tools/shoot.mjs [outDir]   # in another; defaults to ./shots
+```
+
+`tools/shoot.mjs` drives the panel through every section, at both a desktop (1440×900) and a
+mobile (390×844) viewport, and writes numbered PNGs. It expects the dev server at
+`http://localhost:5173` (override with `SANITY_URL`). Read the PNGs after generating them —
+generating without looking at them defeats the point.
+
+## Architecture
+
+### Mounting: no iframe, no palette
+
+The entire premise is that this ships as part of a **target EDS site's own `scripts.js`**,
+not as a Sidekick iframe/popover. A Sidekick "Sanity" button only ever dispatches a
+`custom:sanity` `window` event (`src/main.tsx` → `src/lib/mount.tsx`). The panel mounts
+**eagerly** as soon as `initSanity()` runs — it's persistent chrome like a phone's assistive-
+touch ball, not something that appears only after a click — and creates its own
+`<div id="sanity-panel-host">` with `attachShadow({ mode: 'open' })`. All component CSS
+(`src/lib/tokens.css.ts` + `src/lib/panel.css.ts`) is concatenated into one `<style>` and
+injected into that shadow root. Nothing the panel does can leak style into the host page, and
+nothing the host page does can reach in — this is load-bearing, since the panel must render
+correctly over an arbitrary, unknown site.
+
+The one place style *does* have to cross that boundary: highlighting a target element for
+"locate on page" happens in the **light DOM** (`src/lib/locate.ts`), so severity colors are
+duplicated as hex literals in `src/lib/severity.ts` rather than referenced as CSS custom
+properties, which wouldn't be visible outside the shadow root.
+
+### Dev harness
+
+`index.html` is not the product — it's a fake EDS page ("Cairn Supply Co.") standing in for
+the real host site, with `data-sanity-target="..."` attributes marking a few elements (hero
+image, subcopy, etc.) so their real findings get a clean, stable selector instead of a
+generated nth-of-type chain. `pnpm dev` boots this harness; a real integration would instead
+have the target site's own `scripts.js` import `initSanity()`.
+
+### UI shell: ball → honeycomb cluster → phone panel
+
+`src/components/App.tsx` is a small state machine (`Phase = 'scanning' | 'idle' | 'fan' |
+'panel'`) coordinating two components:
+
+- **`SanityLauncher.tsx`** — the floating ball. Draggable (real spring physics, not CSS
+  transitions — see below), shows overall severity and a critical/warning badge at rest.
+  Hovering or tapping it (`phase: 'fan'`) pops the section bubbles (seven today) into a
+  **honeycomb cluster**, not an arc — the geometry is in `src/lib/geometry.ts::clusterLayout`,
+  which hex-packs `columnSizes(count, maxPerColumn)` columns next to the ball (balanced, extra
+  items biased to the inner column — 6 → [3,3], 7 → [3,2,2] — never a lonely single-bubble
+  column) and shifts the whole cluster vertically if the ball is near a viewport edge. This is
+  count-agnostic by design; adding/removing a section does not need packing changes. Read the
+  comment above `clusterLayout` before changing the packing math; an arc was tried and rejected
+  (documented in `DESIGN.md`) because bubbles need to spread too far from the ball on an arc to
+  avoid touching.
+- **`PhonePanel.tsx`** — the phone-shaped panel a bubble opens into (`phase: 'panel'`).
+  Header (title + severity breakdown + close), a scrollable `.sk-screen`, and a tab bar
+  (`grid-template-columns: repeat(auto-fit, minmax(0, 1fr))`, so it also doesn't need updating
+  per-section) for switching sections without closing the panel. Placement
+  (`geometry.ts::panelPlacement`) grows the panel out of the ball's screen position and
+  switches to a bottom sheet under 620px viewport width.
+
+`src/lib/spring.ts` implements a real spring integrator (damping ratio + response, in Apple's
+"Designing Fluid Interfaces" style) with momentum projection and rubber-banding, used for the
+ball's drag. This is deliberate, not incidental — gesture-driven motion here uses the spring,
+never a CSS transition, so a drag can be interrupted and re-targeted without a visible jump.
+Non-gesture transitions (the cluster popping out, the panel appearing) use CSS with an
+exponential-decelerate easing; bounce/elastic easing is intentionally avoided everywhere
+(flagged by the design-slop detector if reintroduced — see `DESIGN.md`).
+
+### Sections and data — real scanning, not sample data
+
+Scanning is real. `src/lib/scan/` has one module per check domain (`limits.ts`, `siteLimits.ts`,
+`security.ts`, `seo.ts`, `structuredData.ts`, `social.ts`, `links.ts`, `favicon.ts`,
+`performance.ts`, `runtimeErrors.ts`, `accessibility.ts`, `blockStructure.ts`, `consistency.ts`),
+each following the `gatherX()` (impure) / `evaluateX()` (pure, tested) split described under
+Commands above.
+
+`consistency.ts` is Preview vs Live content consistency — compares this page against its
+counterpart on the other EDS environment (`.aem.page` ⟷ `.aem.live`, or legacy `.hlx.page` ⟷
+`.hlx.live`) by deriving the counterpart URL from `siteLimits.ts`'s already-parsed
+`ref--repo--owner` host info, fetching the same path there, and diffing title/meta-description/
+visible-text blocks (block-level elements — `p`/`li`/headings/etc. — not raw text nodes, so the
+diff is paragraph-granularity, not noisy word-by-word). The two hosts are different origins even
+though they share the same ref/repo/owner, so the fetch is attempted, never assumed to succeed —
+a CORS-blocked or failed request gets an honest `idle` "couldn't compare" note (same pattern as
+every other cross-origin limitation: og:image, JSON sheets, canonical, manifest), and a missing
+counterpart page (404) is reported directionally: preview content not yet published to live is
+`idle` (the normal, expected state for work in progress), while a live page that's vanished from
+preview is `warning` (unusual, worth a look). A content/title/description mismatch when both
+sides *do* load is always `idle`, not a failure — differing content is expected mid-edit, same
+reasoning as `seo.ts`'s canonical-mismatch check — the value is surfacing exactly what differs
+(up to 5 example blocks per side, with a "more differences than shown" note past that), not
+penalizing a normal authoring state. Findings feed into the SEO section's "Preview vs Live" tab —
+placed there (not Technical) because the comparison is entirely about content (title, description,
+body text), the same domain SEO's other tabs already own, whereas Technical is scoped to
+"does the EDS pipeline/delivery configuration work," a different kind of question. This was
+originally scoped out ("needs multi-environment access") before being revisited — the
+fetch-with-honest-fallback pattern established by every other cross-origin check made it
+tractable after all.
+`favicon.ts` checks the `<link rel="icon">` in `<head>` actually resolves, not just that the tag
+exists — folded into SEO findings (not Security/Technical) since that's where an author looks for
+`<head>` link checks alongside canonical/viewport. It's probed with an `Image()` load (same
+technique and same reason as the `og:image` probe in `social.ts`: a `fetch()` would
+false-negative on a valid cross-origin favicon a browser loads without CORS). A web-app-manifest
+check was deliberately left out: `manifest.json` is optional PWA/installability metadata, not
+something aem.live requires or that most content-driven EDS sites (marketing pages, blogs, docs)
+use — a missing one isn't a real problem worth flagging. `src/lib/scan/index.ts::runScan()` is
+the orchestrator —
+it fans out the gathers (network-bound ones run in parallel via `Promise.all`, each internally
+timeout-bounded) and assembles a `ScanResult` (`src/data/types.ts`), including the per-section
+severity/count rollups. `src/lib/scanContext.ts` owns the scan lifecycle (`useScanState`, called
+once from `App.tsx`) and exposes it via `ScanContext`/`useScan()` to every consumer — nothing
+below `App` imports scan data directly. `src/lib/mount.tsx` installs runtime error capture
+(`scan/runtimeErrors.ts`) *before* the scan runs, since there's no way to see console/script
+errors that fired before Sanity mounted.
+
+Not everything is checkable from an in-page script — GitHub/Admin API/BYOM/sitemap limits need
+repo or Admin API access this plugin doesn't have, and cookie `Secure`/`HttpOnly`/`SameSite`
+flags are invisible to page JS by browser design. Those show up as an explicit `severity: 'idle'`
+("Not checked") finding rather than being silently skipped or faked — keep that pattern for any
+new check that hits a similar wall. This also applies to the aem.live *asset size* limits
+(`limits.ts`): they only apply to same-origin content-bus assets, so a cross-origin image is
+reported as an explicit "out of scope" note, not silently measured as 0 bytes and passed — that
+was a real bug (Resource Timing zeroes `encodedBodySize`/`transferSize` for cross-origin
+resources without `Timing-Allow-Origin`) that made the whole section look inert. Same-origin
+asset sizing prefers a live HEAD fetch's `Content-Length` over Resource Timing for reliability.
+`siteLimits.ts` covers the rest of the published limits page that isn't about *this* page: it
+parses `ref--repo--owner` straight off the `.aem.page`/`.aem.live` hostname (no API needed) for
+the 63-char/naming checks and to show the site identity in Summary, and fetches `/sitemap.xml`
+and `/redirects.json` same-origin for the sitemap/redirect-count limits. It also fetches the
+three conventional top-level content-source JSON sheets — `/query-index.json`, `/metadata.json`,
+`/placeholders.json` — same-origin, checking each against the 6MB compressed response-payload cap
+(reusing `PAYLOAD_MAX` exported from `limits.ts`, since it's the same limit on a different
+resource) and, for the query index specifically, its row count against the 50,000-page index
+capacity from [aem.live/docs/large-sites](https://www.aem.live/docs/large-sites). A page/query-
+index count nearing the docs' *recommended* (not hard) 1M-page ceiling is a separate warning-level
+note, since that page also documents graduated advice (single index/sitemap/metadata sheet up to
+~50k pages, split into multiple indexes from 50k–1M, consider multiple repoless sites approaching
+1M) rather than one cliff. Sheets that aren't present at all get their own idle "not found, not
+necessarily a problem" note, same as sitemap/redirects — most sites don't have every sheet, and
+that's not an error. Locale-nested or custom-named sheets beyond these three conventional paths
+aren't enumerable from a single page scan, which gets one explicit scope note rather than silence.
+Every remaining category from the docs (GitHub Code Sync file/size-per-ref, Admin API rate
+limits, BYOM) gets its own explicitly labeled "not checkable, and why" note — never one blanket
+disclaimer.
+
+`siteLimits.ts` also covers two items from
+[aem.live/docs/go-live-checklist](https://www.aem.live/docs/go-live-checklist) that nothing
+previously checked: it fetches `/robots.txt` (same false-positive guard as the sitemap/JSON-sheet
+fetches — a 200 with no real `User-agent` directive isn't a real robots.txt) and parses it with
+the pure, unit-tested `parseRobotsTxt()` for a `Sitemap:` directive and a blanket
+`Disallow: /` under `User-agent: *`; and it requests a deliberately random, guaranteed-nonexistent
+path to confirm the site actually responds `404` rather than silently `200` (a dev server's SPA
+fallback is a real, correctly-flagged example of this — proven live against `pnpm dev`, which has
+no server-level 404 handling).
+
+`seo.ts::checkCanonicalStatus()` fetches the canonical URL itself (same-origin only) to confirm it
+resolves with a direct 2xx — the go-live checklist calls out a canonical that redirects or errors
+as a real problem, and until now the canonical check only validated the tag's *format*, never
+whether the URL behind it actually works. `Response.redirected` (not `redirect: 'manual'`, which
+forces an opaque, unreadable response for any origin) is what detects the redirect case. A
+cross-origin canonical gets an idle "can't verify" note rather than a guess, same pattern as the
+favicon/JSON-sheet cross-origin limitations elsewhere.
+
+`security.ts` also detects analytics/martech instrumentation (`ANALYTICS_VENDOR_PATTERNS`, a
+small curated list in the same spirit as `seo.ts`'s misspelling map — real signal, not exhaustive)
+by matching known vendor script hosts (GA4, GTM, Adobe Launch/Analytics, Segment, Meta Pixel,
+HubSpot, etc.) already present in `thirdPartyScriptOrigins`'s script scan. This can only confirm
+*presence*, never that data is actually reaching a dashboard — the go-live checklist's real ask —
+so the finding's detail is explicit about that gap rather than overclaiming.
+
+`blockStructure.ts::gatherEdsRuntimeDetected()` checks for `window.hlx` or a
+`scripts/aem.js`/`scripts/scripts.js` `<script>` tag. It only changes the "no block markers found"
+finding's severity (from `idle` to `warning`, when the runtime genuinely isn't detected) — if any
+`data-block-status` elements exist at all, that's already strong direct evidence the pipeline ran,
+so the runtime-detection heuristic is deliberately not consulted in that branch, avoiding a weak
+heuristic overriding a strong direct signal.
+
+`performance.ts` also encodes three numbers/rules from
+[aem.live/developer/keeping-it-100](https://www.aem.live/developer/keeping-it-100) that are
+EDS-specific enough that a generic Lighthouse/PSI score doesn't expose them as named rules (most
+of that doc — build tooling, minification policy, CI gating — is developer-workflow guidance with
+no runtime artifact a page scan can observe): `evaluateLcpPayloadBudget()` sums Resource Timing
+`transferSize` for everything that arrived (`responseEnd`) before the measured LCP timestamp and
+flags it over the ~100KB budget the doc calls out for a sub-1.5s mobile LCP;
+`evaluateEarlyThirdPartyConnections()` flags any cross-origin resource whose `startTime` is before
+LCP (a DNS+TLS handshake competing with the LCP candidate for the same early bandwidth); and
+`evaluatePreloadHints()` flags any `<link rel="preload">` or `fetchpriority="high"` at all,
+regardless of timing — the doc's guidance here is *counter-intuitive* (both usually read as
+performance wins to a generic tool, but aem.live's own testing found they hurt LCP in this
+architecture), which is exactly the kind of check a generic auditor would get backwards rather
+than simply miss. Implementing these surfaced a real bug: `buildRecommendations()` was telling
+users to "Preload... the largest above-the-fold image... driving LCP" — directly contradicting
+this guidance — fixed alongside adding the new checks.
+
+Building these also surfaced that `performanceFindings` (large-bundle, duplicate-request, and
+runtime-error findings, now joined by the three above) was computed for section severity/badge
+tallying but never actually returned in `ScanResult` or rendered anywhere — the Performance
+section only ever showed the CWV grid, render-blockers, and a generic recommendations list, so
+these findings silently affected the badge color/count without the user ever seeing what they
+were. Fixed by adding `performanceFindings` to `ScanResult` and a `Findings` block (`Block` +
+`FindingRow` + `SeverityCounts`, same vocabulary as every other section) to `PerformanceSection`.
+
+[aem.live/docs/testing](https://www.aem.live/docs/testing) is almost entirely load/performance/
+penetration-testing *methodology* (which tools to run, what traffic volume to simulate, who to
+disclose vulnerabilities to) — none of it is a runtime fact a single page scan can observe, same
+as `dev-collab-and-good-practices`. One line was directly actionable though: the doc groups
+`.aem.page` *and* `.aem.live` together as "preview/delivery tiers," explicitly distinct from the
+production CDN a real visitor hits, and says field RUM data is the authoritative performance
+source — not synthetic lab measurements. `performance.ts::evaluateMeasurementScope()` surfaces
+that caveat (previously only a code comment, never shown to the user) whenever `refInfo.matched`
+is true, regardless of which of the two hosts it is, since the doc doesn't treat `.aem.live` as
+more "production" than `.aem.page` for this purpose. `PerformanceSection` also gained a
+PageSpeed Insights / WebPageTest link-out (`.sk-linkrow` + `.sk-docs`, same pattern as SEO's
+robots.txt/sitemap.xml links) pre-filled with the current page's URL — the doc names both as the
+right tools for this, closing a link-out that was planned from the very first pass of this
+project ("explicitly out of scope... better served as an 'open in new tab' link-out") but never
+actually built. The doc's one numeric threshold (200 uncached req/s triggers rate-limiting) was
+deliberately *not* built into anything: verifying it would mean Sanity actively sending a flood
+of requests at the site it's embedded in, which is a load test, not a passive scan — inappropriate
+for an always-on floating widget to do on its own.
+
+**`blockStructure.ts` is the plugin's actual differentiator, not a generic check.** It reads
+`data-block-status`, which `scripts/aem.js` sets on every EDS block as its loader processes it
+(`"loading"` → `"loaded"`, or left on `"loading"`/set to `"error"` if `decorate()` threw). A
+block that silently renders nothing is invisible to Lighthouse, axe, or any generic SEO/security
+scanner — none of them have a concept of an EDS "block" at all. This is folded into the Technical
+section (`src/components/sections/index.tsx::TechnicalSection`) as its own "Block Structure" tab,
+alongside "Limits" — the two were originally both blocks stacked inside a section called "Limits,"
+but Block Structure and the old Preview-vs-Live check aren't actually limit-compliance checks
+(measured value against a documented cap); they're "does the EDS pipeline/delivery configuration
+work" questions, a different kind of check. Renamed the section to "Technical" (scoped to that
+question) and gave it a `Limits`/`Block Structure` tab split — the `SectionId` literal is
+`'technical'`, not `'limits'`, throughout `data/types.ts`, `data/sections.tsx`,
+`lib/scan/index.ts`, and `PhonePanel.tsx`. The dev harness (`index.html`) simulates the real
+block-status lifecycle with a healthy `cards` block and a deliberately broken `reviews` block
+(`data-block-status="error"`) so this has something real to prove itself against; a real EDS site
+sets these attributes itself once `aem.js` runs.
+
+`src/data/sections.tsx` exports `buildSectionDefs(result: ScanResult | null): SectionDef[]` —
+add a new section's registry entry here (id, label, icon, severity/count derivation). It's a
+function, not a static array, because it derives from the live scan result each render (`null`
+while the first scan is in flight). `src/data/types.ts` defines the shared `Finding`/`Metric`/
+`ScanResult`/etc. shapes.
+
+`src/components/sections/index.tsx` has one component per section (`SummarySection`,
+`PerformanceSection`, `SeoSection`, `SocialSection`, `SecuritySection`, `TechnicalSection`,
+`AccessibilitySection`), each starting with `const { result } = useScan()` and a `<Loading />`
+fallback for the rare case a section renders before its scan resolves (e.g. the Sidekick
+`custom:sanity` event firing mid-scan). They compose entirely from the small shared vocabulary
+in `src/components/blocks.tsx` (`Block`, `FindingRow`, `MetricCell`, `AllClear`, `Loading`) —
+**do not build a bespoke card/row shape inside a section**; extend `blocks.tsx` instead if
+something new is needed. `FindingRow` always renders fully expanded (no accordion) by product
+decision — see `PRODUCT.md`. A `Finding.targetSelector` for a real DOM element is built by
+`src/lib/selector.ts::buildSelector()` (prefers `data-sanity-target`/`id`, else an nth-of-type
+chain unique in the document) at gather time, not hardcoded — the dev harness's
+`data-sanity-target` attributes are picked up automatically when present, but every check works
+on a page without them too.
+
+**Accessibility** is a 7th section (`axe-core`, run via `scan/accessibility.ts`, excluding
+`#sanity-panel-host` from its own scan). axe-core adds real weight to the bundle Sanity ships
+inside a host site's `scripts.js` (~500KB / ~190KB gzip of the ~674KB / ~190KB total as of this
+writing) — worth revisiting (e.g. dynamic `import()` on first open of that section) if bundle
+size becomes a real constraint.
+
+### Icons
+
+`src/components/icons.tsx` is a small hand-authored set (20×20 viewBox, 1.6 stroke). Every
+icon must set explicit intrinsic `width`/`height` — an SVG without them stretches to fill its
+flex parent, which previously turned a chevron into a diagonal bar across a whole card. Follow
+the existing `useBase()` pattern for new icons rather than hand-rolling `<svg>` props.

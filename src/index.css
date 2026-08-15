@@ -1,0 +1,137 @@
+/* Styles for the mock EDS host page only. Deliberately unrelated to the
+   Sanity panel's own design system (see src/lib/tokens.css.ts /
+   panel.css.ts) — the panel lives in its own Shadow DOM and never reads or
+   leaks styles here. */
+
+:root {
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  color: #23231f;
+  background: #f7f4ee;
+}
+
+.host-nav {
+  border-bottom: 1px solid #e4ddcd;
+  background: #fbf9f4;
+}
+.host-nav-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.host-logo {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.host-logo-mark { width: 20px; height: 20px; }
+.host-nav-inner nav { display: flex; gap: 28px; }
+.host-nav-inner nav a {
+  color: #55503f;
+  text-decoration: none;
+  font-size: 14px;
+}
+.host-nav-inner nav a:hover { color: #23231f; }
+
+.host-hero {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 56px 24px 40px;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 48px;
+  align-items: center;
+}
+.host-hero-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 6px;
+  order: 2;
+}
+.host-hero-copy { order: 1; }
+.host-hero-copy h1 {
+  font-size: 40px;
+  line-height: 1.12;
+  margin: 0 0 18px;
+  letter-spacing: -0.01em;
+}
+.host-hero-copy p {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #55503f;
+  margin: 0 0 24px;
+  max-width: 46ch;
+}
+.host-cta {
+  display: inline-block;
+  background: #23231f;
+  color: #fbf9f4;
+  text-decoration: none;
+  padding: 12px 22px;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.host-content {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 24px 100px;
+}
+.host-content h2 { font-size: 26px; margin: 0 0 16px; }
+.host-content p { font-size: 16px; line-height: 1.7; color: #3d392f; margin: 0 0 20px; }
+.host-content-image { width: 100%; border-radius: 6px; margin: 8px 0 20px; }
+
+.host-blocksection {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+}
+.host-blocksection h2 { font-size: 22px; margin: 0 0 20px; }
+.cards.block {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.host-card {
+  background: #fbf9f4;
+  border: 1px solid #e4ddcd;
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.host-card h3 { font-size: 15px; margin: 0 0 8px; }
+.host-card p { font-size: 13.5px; line-height: 1.55; color: #55503f; margin: 0; }
+/* The reviews block below is deliberately empty (see index.html) — no
+   styles needed, that empty gap under the heading is the point. */
+
+.host-footer {
+  border-top: 1px solid #e4ddcd;
+  padding: 20px 24px 90px;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #8a8571;
+}
+
+@media (max-width: 720px) {
+  .host-hero { grid-template-columns: 1fr; padding-top: 36px; gap: 24px; }
+  .host-hero-image { order: 1; }
+  .host-hero-copy { order: 2; }
+  .host-nav-inner nav { display: none; }
+  .cards.block { grid-template-columns: 1fr; }
+}

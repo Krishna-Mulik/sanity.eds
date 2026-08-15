@@ -1,0 +1,33 @@
+{
+  "name": "sanity.eds",
+  "private": false,
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "dist-plugin",
+    "scripts/postinstall.js"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:plugin": "tsc -b && vite build --config vite.plugin.config.ts",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build:plugin",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "dependencies": {
+    "axe-core": "^4.13.0",
+    "preact": "^10.29.7"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^24.13.3",
+    "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  }
+}

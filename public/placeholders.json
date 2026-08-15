@@ -1,0 +1,10 @@
+{
+  "total": 2,
+  "offset": 0,
+  "limit": 2,
+  "data": [
+    { "Key": "addToCart", "Text": "Add to cart" },
+    { "Key": "outOfStock", "Text": "Out of stock" }
+  ],
+  ":type": "sheet"
+}
