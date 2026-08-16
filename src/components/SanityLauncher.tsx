@@ -3,7 +3,7 @@ import { buildSectionDefs } from '../data/sections';
 import { useScan } from '../lib/scanContext';
 import type { SectionId } from '../data/types';
 import { PulseIcon } from './icons';
-import { Spring, VelocityTracker, projectMomentum, rubberband, prefersReducedMotion } from '../lib/spring';
+import { Spring, VelocityTracker, projectMomentum, rubberband } from '../lib/spring';
 import { clusterLayout, clampBallTop, bubbleSize, BALL, type Side } from '../lib/geometry';
 
 interface Props {
@@ -163,7 +163,6 @@ export function SanityLauncher({
 
   const fan = clusterLayout(sectionDefs.length, side, drag.current.rawTop, window.innerHeight, window.innerWidth);
   const bubblePx = bubbleSize(window.innerWidth);
-  const reduced = prefersReducedMotion();
   const hoveredLabel = hoveredId && sectionDefs.find((s) => s.id === hoveredId)?.label;
   // Flip below the ball when there isn't room above for the label to sit,
   // the same edge problem the cluster itself resists.
@@ -181,7 +180,6 @@ export function SanityLauncher({
       <div class="sk-fan" role="menu" aria-hidden={!expanded} data-open={expanded || undefined}>
         {sectionDefs.map((s, i) => {
           const { dx, dy } = fan[i];
-          const delay = reduced ? 0 : (expanded ? i : sectionDefs.length - 1 - i) * 26;
           return (
             <button
               key={s.id}
@@ -193,7 +191,6 @@ export function SanityLauncher({
                 '--dx': `${dx}px`,
                 '--dy': `${dy}px`,
                 '--bubble': `${bubblePx}px`,
-                transitionDelay: `${delay}ms`,
               } as Record<string, string>}
               onClick={() => onSelect(s.id)}
               onMouseEnter={() => setHoveredId(s.id)}

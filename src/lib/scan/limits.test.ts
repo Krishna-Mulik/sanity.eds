@@ -7,7 +7,6 @@ function base(overrides: Partial<LimitsRawData> = {}): LimitsRawData {
     payloadBytes: 1024,
     redirectCount: 0,
     assets: [],
-    skippedCrossOrigin: 0,
     longLinkPaths: [],
     ...overrides,
   };
@@ -63,6 +62,37 @@ describe('evaluateLimits', () => {
     expect(findings.find((f) => f.id === 'limits-asset-/favicon.ico')?.severity).toBe('critical');
   });
 
+  it('flags any discovered JSON file over the 6MB payload cap, not just the conventional sheets', () => {
+    const findings = evaluateLimits(
+      base({ assets: [{ path: '/fragments/nav-tree.json', kind: 'json', bytes: 7 * 1024 * 1024 }] }),
+    );
+    const finding = findings.find((f) => f.id === 'limits-asset-/fragments/nav-tree.json');
+    expect(finding?.severity).toBe('critical');
+    expect(finding?.title).toBe('JSON file over the size limit');
+    expect(finding?.allowed).toBe('6.0 MB');
+  });
+
+  it('does not flag a small discovered JSON file', () => {
+    const findings = evaluateLimits(base({ assets: [{ path: '/fragments/nav-tree.json', kind: 'json', bytes: 2 * 1024 }] }));
+    expect(findings.some((f) => f.id.includes('nav-tree.json'))).toBe(false);
+  });
+
+  it('marks an oversized JSON finding copyable, with no locate selector — JSON has no on-page element to scroll to', () => {
+    const findings = evaluateLimits(
+      base({ assets: [{ path: '/fragments/nav-tree.json', kind: 'json', bytes: 7 * 1024 * 1024, selector: 'a.nav-link' }] }),
+    );
+    const finding = findings.find((f) => f.id === 'limits-asset-/fragments/nav-tree.json');
+    expect(finding?.copyable).toBe(true);
+    expect(finding?.targetSelector).toBeUndefined();
+  });
+
+  it('does not mark a non-JSON oversized asset copyable — it keeps its normal locate selector', () => {
+    const findings = evaluateLimits(base({ assets: [{ path: '/media/hero.mp4', kind: 'video', bytes: 41 * 1024 * 1024, selector: 'video.hero' }] }));
+    const finding = findings.find((f) => f.id === 'limits-asset-/media/hero.mp4');
+    expect(finding?.copyable).toBeUndefined();
+    expect(finding?.targetSelector).toBe('video.hero');
+  });
+
   it('warns on multiple redirects but not a single one', () => {
     expect(evaluateLimits(base({ redirectCount: 2 })).find((f) => f.id === 'limits-redirects')).toBeTruthy();
     expect(evaluateLimits(base({ redirectCount: 1 })).find((f) => f.id === 'limits-redirects')).toBeUndefined();
@@ -71,18 +101,6 @@ describe('evaluateLimits', () => {
   it('says nothing about an asset whose size could not be measured, rather than guessing', () => {
     const findings = evaluateLimits(base({ assets: [{ path: '/media/mystery.png', kind: 'image', bytes: null }] }));
     expect(findings.some((f) => f.id.includes('/media/mystery.png'))).toBe(false);
-  });
-
-  it('notes cross-origin assets as out of scope rather than silently passing them', () => {
-    const findings = evaluateLimits(base({ skippedCrossOrigin: 2 }));
-    const note = findings.find((f) => f.id === 'limits-cross-origin-skipped');
-    expect(note?.severity).toBe('idle');
-    expect(note?.title).toContain('2 media assets');
-  });
-
-  it('does not mention cross-origin assets when there are none', () => {
-    const findings = evaluateLimits(base({ skippedCrossOrigin: 0 }));
-    expect(findings.find((f) => f.id === 'limits-cross-origin-skipped')).toBeUndefined();
   });
 
   it('always includes the docs/spreadsheet not-checkable note', () => {

@@ -18,7 +18,7 @@ import type { LinkInfo } from './links';
 import { formatBytes, relativizeUrl } from '../format';
 import { buildSelector } from '../selector';
 
-export type LimitAssetKind = 'image' | 'svg' | 'video' | 'favicon' | 'pdf';
+export type LimitAssetKind = 'image' | 'svg' | 'video' | 'favicon' | 'pdf' | 'json';
 
 export interface LimitAsset {
   path: string;
@@ -39,8 +39,6 @@ export interface LimitsRawData {
   payloadBytes: number | null;
   redirectCount: number;
   assets: LimitAsset[];
-  /** Same-origin-only assets found but hosted elsewhere, so out of scope for this check. */
-  skippedCrossOrigin: number;
   /** Internal links whose own path also exceeds the 900-char document-path limit. */
   longLinkPaths: LongLinkPath[];
 }
@@ -57,6 +55,7 @@ const CAPS: Record<LimitAssetKind, number> = {
   video: 36 * 1024 * 1024,
   favicon: 16 * 1024,
   pdf: 20 * 1024 * 1024,
+  json: PAYLOAD_MAX,
 };
 
 const LABELS: Record<LimitAssetKind, string> = {
@@ -65,7 +64,14 @@ const LABELS: Record<LimitAssetKind, string> = {
   video: 'Video',
   favicon: 'Favicon',
   pdf: 'PDF',
+  json: 'JSON file',
 };
+
+// These are already fetched and checked in siteLimits.ts with their own
+// page-count-aware messaging — excluded here so the same file doesn't get a
+// second, differently-worded finding from the generic same-origin JSON scan
+// below.
+const CONVENTIONAL_JSON_SHEETS = new Set(['/query-index.json', '/metadata.json', '/placeholders.json']);
 
 // "Supported File Types" per aem.live/docs/limits: HTML (extension-less),
 // JSON, MP4, PDF, SVG, JPG, PNG, AVIF and WEBP. Favicons (.ico) are a
@@ -99,7 +105,43 @@ async function measureBytes(url: string, resources: PerformanceResourceTiming[])
   }
 }
 
-function collectCandidates(doc: Document): AssetCandidate[] {
+function isConventionalSheet(url: string): boolean {
+  try {
+    return CONVENTIONAL_JSON_SHEETS.has(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Discovers same-origin JSON beyond the three conventional sheets — any
+ * .json this page actually links to or fetched during load (the only
+ * honest way to find "any JSON file" from a single page scan; there's no
+ * way to enumerate JSON this page never references).
+ */
+function collectJsonCandidates(doc: Document, resources: PerformanceResourceTiming[]): AssetCandidate[] {
+  const seen = new Set<string>();
+  const candidates: AssetCandidate[] = [];
+
+  function add(rawUrl: string, selector?: string) {
+    let url: string;
+    try {
+      url = new URL(rawUrl, doc.baseURI).href;
+    } catch {
+      return;
+    }
+    if (!/\.json(\?|#|$)/i.test(url) || isConventionalSheet(url) || seen.has(url)) return;
+    seen.add(url);
+    candidates.push({ path: url, kind: 'json', selector });
+  }
+
+  doc.querySelectorAll('a[href$=".json" i]').forEach((el) => add(el.getAttribute('href') || '', buildSelector(el)));
+  resources.forEach((r) => add(r.name));
+
+  return candidates;
+}
+
+function collectCandidates(doc: Document, resources: PerformanceResourceTiming[]): AssetCandidate[] {
   const candidates: AssetCandidate[] = [];
 
   doc.querySelectorAll('img[src]').forEach((el) => {
@@ -137,6 +179,8 @@ function collectCandidates(doc: Document): AssetCandidate[] {
   const iconLink = doc.querySelector<HTMLLinkElement>('link[rel~="icon"]');
   if (iconLink?.href) candidates.push({ path: iconLink.href, kind: 'favicon' });
 
+  candidates.push(...collectJsonCandidates(doc, resources));
+
   return candidates;
 }
 
@@ -145,7 +189,7 @@ export async function gatherLimits(doc: Document = document, win: Window = windo
   const resources = win.performance.getEntriesByType('resource') as PerformanceResourceTiming[];
   const origin = win.location.origin;
 
-  const candidates = collectCandidates(doc);
+  const candidates = collectCandidates(doc, resources);
   const sameOrigin = candidates.filter((c) => {
     try {
       return new URL(c.path).origin === origin;
@@ -169,7 +213,6 @@ export async function gatherLimits(doc: Document = document, win: Window = windo
     payloadBytes: nav ? nav.encodedBodySize || nav.transferSize || null : null,
     redirectCount: nav?.redirectCount ?? 0,
     assets,
-    skippedCrossOrigin: candidates.length - sameOrigin.length,
     longLinkPaths,
   };
 }
@@ -238,6 +281,10 @@ export function evaluateLimits(raw: LimitsRawData): Finding[] {
 
     if (asset.bytes == null) continue;
     const cap = CAPS[asset.kind];
+    // A JSON file isn't a visual page element — there's nothing to scroll
+    // to or highlight — so its path copies the full URL instead of trying
+    // to locate it, unlike image/svg/video/pdf/favicon assets.
+    const isJson = asset.kind === 'json';
     if (asset.bytes > cap) {
       findings.push({
         id: `limits-asset-${asset.path}`,
@@ -245,7 +292,8 @@ export function evaluateLimits(raw: LimitsRawData): Finding[] {
         detail: 'Oversized assets are rejected by the content bus and will not publish — this is the exact file causing that failure.',
         severity: 'critical',
         path: asset.path,
-        targetSelector: asset.selector,
+        targetSelector: isJson ? undefined : asset.selector,
+        copyable: isJson || undefined,
         measured: formatBytes(asset.bytes),
         allowed: formatBytes(cap),
       });
@@ -256,7 +304,8 @@ export function evaluateLimits(raw: LimitsRawData): Finding[] {
         detail: 'Getting close to the content bus size cap for this asset type.',
         severity: 'warning',
         path: asset.path,
-        targetSelector: asset.selector,
+        targetSelector: isJson ? undefined : asset.selector,
+        copyable: isJson || undefined,
         measured: formatBytes(asset.bytes),
         allowed: formatBytes(cap),
       });
@@ -271,15 +320,6 @@ export function evaluateLimits(raw: LimitsRawData): Finding[] {
       severity: 'warning',
       measured: String(raw.redirectCount),
       allowed: '0-1',
-    });
-  }
-
-  if (raw.skippedCrossOrigin > 0) {
-    findings.push({
-      id: 'limits-cross-origin-skipped',
-      title: `${raw.skippedCrossOrigin} media asset${raw.skippedCrossOrigin > 1 ? 's' : ''} hosted on another origin`,
-      detail: "Size and file type can't be read from this page for a cross-origin asset — but aem.live's content-bus limits only apply to same-origin content-source assets anyway, so these are out of scope by definition, not unchecked.",
-      severity: 'idle',
     });
   }
 

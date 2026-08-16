@@ -129,6 +129,20 @@ describe('buildSeoPageInfo', () => {
     const info = buildSeoPageInfo(base({ imageCount: 4 }));
     expect(info.imageCount).toBe(4);
   });
+
+  it('carries the canonical href through unchanged', () => {
+    const info = buildSeoPageInfo(base({ canonicalHref: 'https://example.com/page' }));
+    expect(info.canonicalHref).toBe('https://example.com/page');
+  });
+
+  it('carries the headings through in document order for the outline display', () => {
+    const headings = [
+      { level: 1, text: 'a', selector: 'h1' },
+      { level: 3, text: 'b', selector: 'h3' },
+    ];
+    const info = buildSeoPageInfo(base({ headings }));
+    expect(info.headings).toEqual(headings);
+  });
 });
 
 describe('evaluateCanonicalStatus', () => {

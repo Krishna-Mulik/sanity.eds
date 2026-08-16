@@ -5,7 +5,8 @@
 // conventional EDS paths). GitHub Code Sync file/size-per-ref limits and
 // Admin API rate limits still need real API access this plugin doesn't
 // have — those stay explicit "not checkable" notes rather than a guess.
-import type { Finding } from '../../data/types';
+import type { Finding, Metric } from '../../data/types';
+import { worstSeverity, type Severity } from '../severity';
 import { formatBytes, relativizeUrl } from '../format';
 import { PAYLOAD_MAX } from './limits';
 
@@ -128,9 +129,31 @@ export async function gatherRobots(win: Window = window): Promise<RobotsInfo> {
 export interface NotFoundInfo {
   checked: boolean;
   status: number | null;
+  /** Whether the response body itself reads as a dedicated "not found" page (title/h1), vs. e.g. a bare SPA fallback serving the same content for every path. */
+  looksLikeNotFoundPage: boolean;
 }
 
-/** Requests a deliberately nonexistent path and records its status — proves whether the site actually 404s. */
+// A page's own author-set global flagging itself as an error page (e.g.
+// `window.errorCode = '404';`). Matched as a raw text pattern against the
+// fetched HTML, not executed — Sanity never runs a third-party page's
+// script to check it, only reads the source text for this literal shape.
+const ERROR_CODE_SIGNAL = /\berrorCode\s*[:=]\s*['"]404['"]/i;
+// EDS convention: a site's dedicated not-found content is authored at
+// /404 (published as /404.html) — if the canonical link on the probed
+// response points there, this genuinely is that page, just served with
+// the wrong status.
+const CANONICAL_404_SIGNAL = /\/404(\.html)?(\?|#|$)/i;
+
+/**
+ * Requests a deliberately nonexistent path and records its status — proves
+ * whether the site actually 404s. When the status isn't 404, also checks
+ * the response for two concrete signals that it's still the site's real
+ * "not found" page (just served with the wrong status, a config fix) as
+ * opposed to no dedicated error page at all (the homepage or index.html
+ * served for every path, telling the visitor nothing went wrong): its
+ * canonical link naming /404 or /404.html, or an author-set
+ * `errorCode = '404'`-style global in the page source.
+ */
 export async function gatherNotFoundCheck(win: Window = window): Promise<NotFoundInfo> {
   const probePath = `/sanity-404-probe-${Math.random().toString(36).slice(2)}`;
   const url = new URL(probePath, win.location.origin).href;
@@ -138,9 +161,18 @@ export async function gatherNotFoundCheck(win: Window = window): Promise<NotFoun
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
-    return { checked: true, status: res.status };
+    let looksLikeNotFoundPage = false;
+    try {
+      const text = await res.text();
+      const doc = new DOMParser().parseFromString(text, 'text/html');
+      const canonicalHref = doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '';
+      looksLikeNotFoundPage = CANONICAL_404_SIGNAL.test(canonicalHref) || ERROR_CODE_SIGNAL.test(text);
+    } catch {
+      // Body unreadable — leave looksLikeNotFoundPage false rather than guess.
+    }
+    return { checked: true, status: res.status, looksLikeNotFoundPage };
   } catch {
-    return { checked: false, status: null };
+    return { checked: false, status: null, looksLikeNotFoundPage: false };
   } finally {
     clearTimeout(timer);
   }
@@ -198,7 +230,7 @@ export interface JsonSheets {
 
 const NOT_FOUND_SHEETS: JsonSheets = { queryIndex: { found: false }, metadata: { found: false }, placeholders: { found: false } };
 const NOT_FOUND_ROBOTS: RobotsInfo = { found: false, sitemapUrls: [], disallowsAll: false };
-const NOT_CHECKED_404: NotFoundInfo = { checked: false, status: null };
+const NOT_CHECKED_404: NotFoundInfo = { checked: false, status: null, looksLikeNotFoundPage: false };
 
 const REF_MAX = 63;
 const NAME_PATTERN = /^[a-z0-9-]+$/;
@@ -330,12 +362,21 @@ export function evaluateSiteLimits(
 
   if (notFound.checked) {
     if (notFound.status !== 404) {
-      findings.push({
-        id: 'site-404-status',
-        title: `Nonexistent pages return HTTP ${notFound.status}, not 404`,
-        detail: 'A request to a random path that should not exist did not come back as a 404. Search engines and monitoring tools rely on a real 404 status to know a page is actually gone — a false 200 can get broken or removed URLs silently indexed as valid content.',
-        severity: 'warning',
-      });
+      findings.push(
+        notFound.looksLikeNotFoundPage
+          ? {
+              id: 'site-404-status',
+              title: `A "not found" page exists, but it's served with HTTP ${notFound.status} instead of 404`,
+              detail: 'The page content itself reads as a dedicated error page — search engines and monitoring tools only check the status code, though, not the content, so this URL still gets treated as valid, indexable content.',
+              severity: 'warning',
+            }
+          : {
+              id: 'site-404-status',
+              title: `Nonexistent pages return HTTP ${notFound.status}, not 404`,
+              detail: "A request to a random path that should not exist did not come back as a 404, and the response doesn't even read like a dedicated error page — likely the homepage or a dev-server/SPA fallback serving the same content for every unmatched path. Search engines and monitoring tools rely on a real 404 status to know a page is actually gone.",
+              severity: 'warning',
+            },
+      );
     }
   } else {
     findings.push({
@@ -346,113 +387,7 @@ export function evaluateSiteLimits(
     });
   }
 
-  const { queryIndex, metadata, placeholders } = jsonSheets;
-
-  if (queryIndex.found) {
-    if (queryIndex.rowCount != null && queryIndex.rowCount > QUERY_INDEX_PAGE_MAX) {
-      findings.push({
-        id: 'site-query-index-pages',
-        title: 'Query index has grown past 50k pages',
-        detail: 'A single query index is capped at 50,000 pages to avoid reindexing slowdowns — split content across multiple indexes for different content areas.',
-        severity: 'critical',
-        path: queryIndex.url,
-        measured: `${queryIndex.rowCount.toLocaleString()} pages`,
-        allowed: `${QUERY_INDEX_PAGE_MAX.toLocaleString()} pages`,
-      });
-    } else if (queryIndex.rowCount != null && queryIndex.rowCount > QUERY_INDEX_PAGE_MAX * 0.85) {
-      findings.push({
-        id: 'site-query-index-pages-warn',
-        title: 'Query index is nearing the 50k page capacity',
-        detail: 'Approaching the point where reindexing slows down and the JSON payload needs pagination logic.',
-        severity: 'warning',
-        path: queryIndex.url,
-        measured: `${queryIndex.rowCount.toLocaleString()} pages`,
-        allowed: `${QUERY_INDEX_PAGE_MAX.toLocaleString()} pages`,
-      });
-    }
-    if (queryIndex.bytes != null && queryIndex.bytes > PAYLOAD_MAX) {
-      findings.push({
-        id: 'site-query-index-payload',
-        title: 'query-index.json exceeds the 6MB response payload limit',
-        detail: 'This is the exact resource that will fail to serve once a JSON response goes over the compressed payload cap.',
-        severity: 'critical',
-        path: queryIndex.url,
-        measured: formatBytes(queryIndex.bytes),
-        allowed: formatBytes(PAYLOAD_MAX),
-      });
-    } else if (queryIndex.bytes != null && queryIndex.bytes > PAYLOAD_MAX * 0.85) {
-      findings.push({
-        id: 'site-query-index-payload-warn',
-        title: 'query-index.json is nearing the 6MB payload limit',
-        detail: 'Getting close to the compressed response cap for JSON sheets.',
-        severity: 'warning',
-        path: queryIndex.url,
-        measured: formatBytes(queryIndex.bytes),
-        allowed: formatBytes(PAYLOAD_MAX),
-      });
-    }
-  } else {
-    findings.push({
-      id: 'site-query-index-not-found',
-      title: 'No query index found at /query-index.json',
-      detail: "Not necessarily a problem for a small site, but most production EDS sites define one — it's what powers search, nav, and sitemap generation.",
-      severity: 'idle',
-    });
-  }
-
-  if (metadata.found && metadata.bytes != null) {
-    if (metadata.bytes > PAYLOAD_MAX) {
-      findings.push({
-        id: 'site-metadata-payload',
-        title: 'metadata.json exceeds the 6MB response payload limit',
-        detail: 'The metadata sheet is served as a JSON response like any other — an oversized sheet fails the same compressed-payload cap.',
-        severity: 'critical',
-        path: metadata.url,
-        measured: formatBytes(metadata.bytes),
-        allowed: formatBytes(PAYLOAD_MAX),
-      });
-    } else if (metadata.bytes > PAYLOAD_MAX * 0.85) {
-      findings.push({
-        id: 'site-metadata-payload-warn',
-        title: 'metadata.json is nearing the 6MB payload limit',
-        detail: 'Getting close to the compressed response cap. Large sites typically split per-section metadata sheets before hitting this.',
-        severity: 'warning',
-        path: metadata.url,
-        measured: formatBytes(metadata.bytes),
-        allowed: formatBytes(PAYLOAD_MAX),
-      });
-    }
-  } else if (!metadata.found) {
-    findings.push({
-      id: 'site-metadata-not-found',
-      title: 'No metadata sheet found at /metadata.json',
-      detail: 'Not necessarily a problem — some sites drive per-page metadata from page content or block config instead.',
-      severity: 'idle',
-    });
-  }
-
-  if (placeholders.found && placeholders.bytes != null) {
-    if (placeholders.bytes > PAYLOAD_MAX) {
-      findings.push({
-        id: 'site-placeholders-payload',
-        title: 'placeholders.json exceeds the 6MB response payload limit',
-        detail: 'Unusual for a UI-strings sheet to reach this size — worth checking what got added to it.',
-        severity: 'critical',
-        path: placeholders.url,
-        measured: formatBytes(placeholders.bytes),
-        allowed: formatBytes(PAYLOAD_MAX),
-      });
-    }
-  } else {
-    findings.push({
-      id: 'site-placeholders-not-found',
-      title: 'No placeholders sheet found at /placeholders.json',
-      detail: 'Not necessarily a problem — only needed for shared UI strings or localization.',
-      severity: 'idle',
-    });
-  }
-
-  const pageSignal = Math.max(sitemap.pageCount ?? 0, queryIndex.rowCount ?? 0);
+  const pageSignal = Math.max(sitemap.pageCount ?? 0, jsonSheets.queryIndex.rowCount ?? 0);
   if (pageSignal > SITE_PAGE_RECOMMENDED_MAX * 0.8) {
     findings.push({
       id: 'site-pages-approaching-max',
@@ -463,13 +398,6 @@ export function evaluateSiteLimits(
       allowed: `${SITE_PAGE_RECOMMENDED_MAX.toLocaleString()} pages (recommended max)`,
     });
   }
-
-  findings.push({
-    id: 'site-json-sheets-scope',
-    title: 'Only the conventional top-level JSON sheets are checked',
-    detail: 'query-index.json, metadata.json, and placeholders.json are covered. Locale-nested, per-section, or custom-named sheets (e.g. /en/query-index.json) are not automatically discoverable from a single page scan.',
-    severity: 'idle',
-  });
 
   findings.push({
     id: 'site-code-sync-not-checkable',
@@ -493,4 +421,49 @@ export function evaluateSiteLimits(
   });
 
   return findings;
+}
+
+function sheetSeverity(current: number | undefined, cap: number): Severity {
+  if (current == null) return 'idle';
+  if (current > cap) return 'critical';
+  if (current > cap * 0.85) return 'warning';
+  return 'normal';
+}
+
+/**
+ * One always-visible card per conventional JSON sheet (measured value
+ * against its cap, "Not found" when absent) instead of a Finding that only
+ * ever appears when something's wrong or missing — a prose "here's what we
+ * check and why" note next to three silent passes read as clutter. Query
+ * index shows page count (its distinctive, name-checked limit) as the
+ * headline value, but its severity still accounts for the same 6MB payload
+ * cap the other two sheets are judged on, so an oversized-but-under-50k-rows
+ * index still turns the card red rather than silently passing.
+ */
+export function evaluateJsonSheetMetrics(sheets: JsonSheets): Metric[] {
+  const { queryIndex, metadata, placeholders } = sheets;
+
+  return [
+    {
+      id: 'query-index',
+      label: 'Query index',
+      value: queryIndex.found && queryIndex.rowCount != null ? `${queryIndex.rowCount.toLocaleString()} pages` : 'Not found',
+      target: `${QUERY_INDEX_PAGE_MAX.toLocaleString()} pages, ${formatBytes(PAYLOAD_MAX)}`,
+      severity: queryIndex.found ? worstSeverity([sheetSeverity(queryIndex.rowCount, QUERY_INDEX_PAGE_MAX), sheetSeverity(queryIndex.bytes, PAYLOAD_MAX)]) : 'idle',
+    },
+    {
+      id: 'metadata-sheet',
+      label: 'Metadata',
+      value: metadata.found && metadata.bytes != null ? formatBytes(metadata.bytes) : 'Not found',
+      target: formatBytes(PAYLOAD_MAX),
+      severity: metadata.found ? sheetSeverity(metadata.bytes, PAYLOAD_MAX) : 'idle',
+    },
+    {
+      id: 'placeholders-sheet',
+      label: 'Placeholders',
+      value: placeholders.found && placeholders.bytes != null ? formatBytes(placeholders.bytes) : 'Not found',
+      target: formatBytes(PAYLOAD_MAX),
+      severity: placeholders.found ? sheetSeverity(placeholders.bytes, PAYLOAD_MAX) : 'idle',
+    },
+  ];
 }

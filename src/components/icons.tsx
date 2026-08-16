@@ -60,6 +60,13 @@ export const PulseIcon = (p: IconProps) => (
   </svg>
 );
 
+export const CopyIcon = (p: IconProps) => (
+  <svg {...useBase(p)}>
+    <rect x="7.5" y="7.5" width="9" height="9" rx="1.4" />
+    <path d="M13.5 7.5V5.9A1.4 1.4 0 0 0 12.1 4.5H4.9A1.4 1.4 0 0 0 3.5 5.9v7.2a1.4 1.4 0 0 0 1.4 1.4h1.6" />
+  </svg>
+);
+
 export const GridIcon = (p: IconProps) => (
   <svg {...useBase(p)}>
     <rect x="2.6" y="2.6" width="6" height="6" rx="1.4" />

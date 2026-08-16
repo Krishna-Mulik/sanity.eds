@@ -18,11 +18,12 @@ interface Props {
   side: Side;
   ballTop: number;
   active: SectionId;
+  closing: boolean;
   onSelectSection: (id: SectionId) => void;
   onClose: () => void;
 }
 
-export function PhonePanel({ side, ballTop, active, onSelectSection, onClose }: Props) {
+export function PhonePanel({ side, ballTop, active, closing, onSelectSection, onClose }: Props) {
   const scan = useScan();
   const sectionDefs = buildSectionDefs(scan.result);
   const current = sectionById(sectionDefs, active);
@@ -52,6 +53,7 @@ export function PhonePanel({ side, ballTop, active, onSelectSection, onClose }: 
       aria-label={`Sanity — ${current.label}`}
       data-side={side}
       data-sheet={box.sheet || undefined}
+      data-closing={closing || undefined}
       style={{
         width: `${box.width}px`,
         height: `${box.height}px`,

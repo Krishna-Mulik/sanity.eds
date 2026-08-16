@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   evaluateSiteLimits,
+  evaluateJsonSheetMetrics,
   gatherGithubRef,
   parseRobotsTxt,
   type GithubRefInfo,
@@ -40,7 +41,7 @@ function robots(overrides: Partial<RobotsInfo> = {}): RobotsInfo {
   return { found: true, url: '/robots.txt', sitemapUrls: ['https://example.com/sitemap.xml'], disallowsAll: false, ...overrides };
 }
 function notFound(overrides: Partial<NotFoundInfo> = {}): NotFoundInfo {
-  return { checked: true, status: 404, ...overrides };
+  return { checked: true, status: 404, looksLikeNotFoundPage: false, ...overrides };
 }
 
 describe('gatherGithubRef', () => {
@@ -139,66 +140,64 @@ describe('evaluateSiteLimits — always-present not-checkable notes', () => {
     expect(findings.find((f) => f.id === 'site-byom-not-checkable')?.severity).toBe('idle');
   });
 
-  it('notes the scope of which JSON sheets are checked even when no jsonSheets arg is passed', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
-    expect(findings.find((f) => f.id === 'site-json-sheets-scope')?.severity).toBe('idle');
-    expect(findings.find((f) => f.id === 'site-query-index-not-found')?.severity).toBe('idle');
-    expect(findings.find((f) => f.id === 'site-metadata-not-found')?.severity).toBe('idle');
-    expect(findings.find((f) => f.id === 'site-placeholders-not-found')?.severity).toBe('idle');
-  });
 });
 
-describe('evaluateSiteLimits — query index', () => {
-  it('flags a query index over 50k rows as critical', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ queryIndex: sheet({ rowCount: 60_000 }) }));
-    expect(findings.find((f) => f.id === 'site-query-index-pages')?.severity).toBe('critical');
+describe('evaluateJsonSheetMetrics', () => {
+  it('shows page count as the query index card value, "Not found" when absent', () => {
+    const found = evaluateJsonSheetMetrics(jsonSheets({ queryIndex: sheet({ rowCount: 1234 }) }));
+    expect(found.find((m) => m.id === 'query-index')?.value).toBe('1,234 pages');
+
+    const missing = evaluateJsonSheetMetrics(jsonSheets({ queryIndex: { found: false } }));
+    expect(missing.find((m) => m.id === 'query-index')?.value).toBe('Not found');
+    expect(missing.find((m) => m.id === 'query-index')?.severity).toBe('idle');
   });
 
-  it('warns when a query index is nearing 50k rows', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ queryIndex: sheet({ rowCount: 45_000 }) }));
-    expect(findings.find((f) => f.id === 'site-query-index-pages-warn')?.severity).toBe('warning');
+  it('flags the query index card critical when over 50k rows', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ queryIndex: sheet({ rowCount: 60_000 }) }));
+    expect(metrics.find((m) => m.id === 'query-index')?.severity).toBe('critical');
   });
 
-  it('flags query-index.json over the 6MB payload cap as critical', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ queryIndex: sheet({ bytes: 7 * 1024 * 1024 }) }));
-    expect(findings.find((f) => f.id === 'site-query-index-payload')?.severity).toBe('critical');
+  it('warns the query index card when nearing 50k rows', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ queryIndex: sheet({ rowCount: 45_000 }) }));
+    expect(metrics.find((m) => m.id === 'query-index')?.severity).toBe('warning');
   });
 
-  it('does not flag a small query index', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets());
-    expect(findings.some((f) => f.id.startsWith('site-query-index-') && !f.id.includes('not-found'))).toBe(false);
+  it('flags the query index card critical when over the 6MB payload cap, even with a healthy page count', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ queryIndex: sheet({ rowCount: 100, bytes: 7 * 1024 * 1024 }) }));
+    expect(metrics.find((m) => m.id === 'query-index')?.severity).toBe('critical');
   });
 
-  it('notes (not warns) when no query index is found', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ queryIndex: { found: false } }));
-    expect(findings.find((f) => f.id === 'site-query-index-not-found')?.severity).toBe('idle');
-  });
-});
-
-describe('evaluateSiteLimits — metadata and placeholders sheets', () => {
-  it('flags metadata.json over the 6MB payload cap as critical', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ metadata: sheet({ url: '/metadata.json', bytes: 7 * 1024 * 1024 }) }));
-    expect(findings.find((f) => f.id === 'site-metadata-payload')?.severity).toBe('critical');
+  it('shows metadata size as the card value and flags it critical over 6MB', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ metadata: sheet({ bytes: 7 * 1024 * 1024 }) }));
+    const metric = metrics.find((m) => m.id === 'metadata-sheet');
+    expect(metric?.value).toBe('7.0 MB');
+    expect(metric?.severity).toBe('critical');
   });
 
-  it('notes (not warns) when no metadata sheet is found', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ metadata: { found: false } }));
-    expect(findings.find((f) => f.id === 'site-metadata-not-found')?.severity).toBe('idle');
+  it('notes (idle, not warning) a missing metadata sheet', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ metadata: { found: false } }));
+    const metric = metrics.find((m) => m.id === 'metadata-sheet');
+    expect(metric?.value).toBe('Not found');
+    expect(metric?.severity).toBe('idle');
   });
 
-  it('flags placeholders.json over the 6MB payload cap as critical', () => {
-    const findings = evaluateSiteLimits(
-      ref(),
-      sitemap(),
-      redirects(),
-      jsonSheets({ placeholders: sheet({ url: '/placeholders.json', bytes: 7 * 1024 * 1024 }) }),
-    );
-    expect(findings.find((f) => f.id === 'site-placeholders-payload')?.severity).toBe('critical');
+  it('shows placeholders size as the card value and flags it critical over 6MB', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ placeholders: sheet({ bytes: 7 * 1024 * 1024 }) }));
+    const metric = metrics.find((m) => m.id === 'placeholders-sheet');
+    expect(metric?.value).toBe('7.0 MB');
+    expect(metric?.severity).toBe('critical');
   });
 
-  it('notes (not warns) when no placeholders sheet is found', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets({ placeholders: { found: false } }));
-    expect(findings.find((f) => f.id === 'site-placeholders-not-found')?.severity).toBe('idle');
+  it('notes (idle, not warning) a missing placeholders sheet', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets({ placeholders: { found: false } }));
+    const metric = metrics.find((m) => m.id === 'placeholders-sheet');
+    expect(metric?.value).toBe('Not found');
+    expect(metric?.severity).toBe('idle');
+  });
+
+  it('rates a healthy sheet normal, not idle', () => {
+    const metrics = evaluateJsonSheetMetrics(jsonSheets());
+    expect(metrics.find((m) => m.id === 'metadata-sheet')?.severity).toBe('normal');
   });
 });
 
@@ -265,9 +264,18 @@ describe('evaluateSiteLimits — robots.txt', () => {
 });
 
 describe('evaluateSiteLimits — custom 404 behavior', () => {
-  it('warns when a nonexistent path does not return 404', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets(), robots(), notFound({ status: 200 }));
-    expect(findings.find((f) => f.id === 'site-404-status')?.severity).toBe('warning');
+  it('warns when a nonexistent path returns 200 with no dedicated error page', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets(), robots(), notFound({ status: 200, looksLikeNotFoundPage: false }));
+    const finding = findings.find((f) => f.id === 'site-404-status');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.title).toMatch(/HTTP 200, not 404/);
+  });
+
+  it('distinguishes a real "not found" page served with the wrong status from no error page at all', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets(), robots(), notFound({ status: 200, looksLikeNotFoundPage: true }));
+    const finding = findings.find((f) => f.id === 'site-404-status');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.title).toMatch(/not found" page exists/);
   });
 
   it('does not flag a site that correctly 404s', () => {
@@ -276,7 +284,7 @@ describe('evaluateSiteLimits — custom 404 behavior', () => {
   });
 
   it('notes (not warns) when 404 behavior could not be checked at all', () => {
-    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets(), robots(), { checked: false, status: null });
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects(), jsonSheets(), robots(), { checked: false, status: null, looksLikeNotFoundPage: false });
     expect(findings.find((f) => f.id === 'site-404-not-checkable')?.severity).toBe('idle');
   });
 });

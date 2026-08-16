@@ -19,6 +19,13 @@ export interface Finding {
   path?: string;
   /** Selector on the host page, when the finding points at a real element. */
   targetSelector?: string;
+  /**
+   * When true, `path`'s control copies the full URL (origin + path) to the
+   * clipboard instead of locating on the page — for findings about a
+   * resource (a JSON file, say) that has no meaningful on-page element to
+   * scroll to. Takes precedence over `targetSelector` if both are set.
+   */
+  copyable?: boolean;
   /** Measured vs allowed, for limit-style findings. */
   measured?: string;
   allowed?: string;
@@ -76,8 +83,15 @@ export interface SiteIdentity {
  * or invalid lang attribute is axe-core's html-has-lang/html-lang-valid
  * judgment to make, in the Accessibility section, not a second opinion here).
  */
+export interface HeadingOutlineItem {
+  level: number;
+  text: string;
+  selector: string;
+}
+
 export interface SeoPageInfo {
   url: string;
+  canonicalHref: string | null;
   robotsContent: string | null;
   keywordsContent: string | null;
   authorContent: string | null;
@@ -85,6 +99,8 @@ export interface SeoPageInfo {
   lang: string | null;
   /** Index 0 = H1 count ... index 5 = H6 count. */
   headingCounts: number[];
+  /** Headings in document order, for rendering the outline (H1 > H2 > H4...) and flagging skipped levels. */
+  headings: HeadingOutlineItem[];
   imageCount: number;
 }
 
@@ -103,6 +119,7 @@ export interface ScanResult {
   securityFindings: Finding[];
   limitFindings: Finding[];
   siteLimitFindings: Finding[];
+  jsonSheetMetrics: Metric[];
   blockFindings: Finding[];
   consistencyFindings: Finding[];
   accessibilityFindings: Finding[];

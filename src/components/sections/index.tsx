@@ -2,8 +2,9 @@ import { useState } from 'preact/hooks';
 import { Block, FindingRow, MetricCell, AllClear, Loading, SeverityCounts, SubTabs } from '../blocks';
 import { buildSectionDefs } from '../../data/sections';
 import { useScan } from '../../lib/scanContext';
-import type { SectionId, SocialCard } from '../../data/types';
+import type { SectionId, SocialCard, HeadingOutlineItem } from '../../data/types';
 import { ChevronRightIcon } from '../icons';
+import { locateOnPage } from '../../lib/locate';
 
 interface SectionProps {
   onLocate: () => void;
@@ -155,6 +156,58 @@ export function PerformanceSection({ onLocate }: SectionProps) {
 const SEO_TABS = ['Findings', 'Metadata', 'Structure', 'Links', 'Preview vs Live'] as const;
 type SeoTab = (typeof SEO_TABS)[number];
 
+/**
+ * Only the broken transitions (H3 straight to H5, skipping H4), not the
+ * full document-order chain — the point is to point at the specific place
+ * the outline skips a level, not to re-list every heading on the page. A
+ * skip is only ever flagged going *deeper* (level jumps up by more than
+ * one); returning to a shallower heading is always valid outline
+ * structure, never an error. This is a visual aid, not a duplicate
+ * finding: axe-core's heading-order rule (Accessibility section) already
+ * owns the pass/fail verdict on this.
+ */
+function HeadingOutline({ headings, onLocate }: { headings: HeadingOutlineItem[]; onLocate?: () => void }) {
+  const breaks = headings
+    .map((h, i) => ({ prev: headings[i - 1], curr: h }))
+    .filter((pair): pair is { prev: HeadingOutlineItem; curr: HeadingOutlineItem } => Boolean(pair.prev) && pair.curr.level > pair.prev.level + 1);
+
+  if (!breaks.length) return null;
+
+  return (
+    <div class="sk-headingchain">
+      {breaks.map(({ prev, curr }, i) => (
+        <div class="sk-heading-break" key={`${prev.selector}-${curr.selector}-${i}`}>
+          <button
+            type="button"
+            class="sk-heading-chip"
+            title={prev.text || `H${prev.level}`}
+            onClick={() => {
+              locateOnPage(prev.selector, 'normal');
+              onLocate?.();
+            }}
+          >
+            H{prev.level}
+          </button>
+          <span class="sk-heading-sep is-broken" aria-hidden="true">
+            {'>'}
+          </span>
+          <button
+            type="button"
+            class="sk-heading-chip is-broken"
+            title={curr.text || `H${curr.level}`}
+            onClick={() => {
+              locateOnPage(curr.selector, 'warning');
+              onLocate?.();
+            }}
+          >
+            H{curr.level}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SeoSection({ onLocate }: SectionProps) {
   const { result } = useScan();
   const [tab, setTab] = useState<SeoTab>('Findings');
@@ -165,12 +218,15 @@ export function SeoSection({ onLocate }: SectionProps) {
 
   const infoRows: { label: string; value: string }[] = [
     { label: 'URL', value: seoPageInfo.url },
+    { label: 'Canonical', value: seoPageInfo.canonicalHref || 'Not set' },
     { label: 'Robots tag', value: seoPageInfo.robotsContent || 'Not set — defaults to index, follow' },
     { label: 'Keywords', value: seoPageInfo.keywordsContent || 'Not set — ignored by modern search engines' },
     { label: 'Author', value: seoPageInfo.authorContent || 'Not set' },
     { label: 'Publisher', value: seoPageInfo.publisherContent || 'Not set' },
     { label: 'Lang', value: seoPageInfo.lang || 'Not set' },
   ];
+
+  const headingBreakCount = seoPageInfo.headings.filter((h, i) => i > 0 && h.level > seoPageInfo.headings[i - 1].level + 1).length;
 
   return (
     <>
@@ -212,15 +268,23 @@ export function SeoSection({ onLocate }: SectionProps) {
       )}
 
       {tab === 'Structure' && (
-        <Block title="Page structure">
-          <div class="sk-metricgrid">
-            {seoPageInfo.headingCounts.map((count, i) => (
-              <MetricCell key={`h${i + 1}`} label={`H${i + 1}`} value={String(count)} target="headings" severity="normal" />
-            ))}
-            <MetricCell label="Images" value={String(seoPageInfo.imageCount)} target="on page" severity="normal" />
-            <MetricCell label="Links" value={String(linkStats.total)} target="on page" severity="normal" />
-          </div>
-        </Block>
+        <>
+          <Block title="Page structure">
+            <div class="sk-metricgrid">
+              {seoPageInfo.headingCounts.map((count, i) => (
+                <MetricCell key={`h${i + 1}`} label={`H${i + 1}`} value={String(count)} target="headings" severity="normal" />
+              ))}
+              <MetricCell label="Images" value={String(seoPageInfo.imageCount)} target="on page" severity="normal" />
+              <MetricCell label="Links" value={String(linkStats.total)} target="on page" severity="normal" />
+            </div>
+          </Block>
+
+          {headingBreakCount > 0 && (
+            <Block title="Heading outline" meta={`${headingBreakCount} skipped level${headingBreakCount > 1 ? 's' : ''}`}>
+              <HeadingOutline headings={seoPageInfo.headings} onLocate={onLocate} />
+            </Block>
+          )}
+        </>
       )}
 
       {tab === 'Links' && (
@@ -407,6 +471,14 @@ export function TechnicalSection({ onLocate }: SectionProps) {
             <div class="sk-findings">
               {result.siteLimitFindings.map((f) => (
                 <FindingRow finding={f} onLocate={onLocate} key={f.id} />
+              ))}
+            </div>
+          </Block>
+
+          <Block title="JSON sheets" meta="query-index, metadata, placeholders">
+            <div class="sk-metricgrid">
+              {result.jsonSheetMetrics.map((m) => (
+                <MetricCell key={m.id} label={m.label} value={m.value} target={m.target} severity={m.severity} />
               ))}
             </div>
           </Block>

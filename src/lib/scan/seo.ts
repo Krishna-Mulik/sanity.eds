@@ -98,12 +98,14 @@ export function buildSeoPageInfo(raw: SeoRawData): SeoPageInfo {
   const headingCounts = [1, 2, 3, 4, 5, 6].map((level) => raw.headings.filter((h) => h.level === level).length);
   return {
     url: raw.currentUrl,
+    canonicalHref: raw.canonicalHref,
     robotsContent: raw.robotsContent,
     keywordsContent: raw.keywordsContent,
     authorContent: raw.authorContent,
     publisherContent: raw.publisherContent,
     lang: raw.htmlLang,
     headingCounts,
+    headings: raw.headings,
     imageCount: raw.imageCount,
   };
 }

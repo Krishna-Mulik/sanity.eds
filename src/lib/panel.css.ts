@@ -7,9 +7,8 @@ export const panelCss = /* css */ `
   display: grid; place-items: center;
   border-radius: var(--r-sm);
   color: var(--text-3);
-  transition: background 140ms ease, color 140ms ease;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
-.sk-iconbtn:hover { background: var(--panel-3); color: var(--text); }
 .sk-iconbtn:active { transform: scale(0.94); }
 
 /* ============ Launcher ============ */
@@ -100,7 +99,7 @@ export const panelCss = /* css */ `
   transform: translate(var(--dx), var(--dy)) scale(1);
   opacity: 1;
 }
-.sk-bubble:hover, .sk-bubble:focus-visible { background: var(--panel-3); color: var(--text); z-index: 3; }
+.sk-bubble:focus-visible { background: var(--panel-3); color: var(--text); z-index: 3; }
 /* Feedback on the press itself, not just on the click that navigates away. */
 .sk-bubble:active { filter: brightness(0.92); }
 .sk-bubble.is-critical { color: var(--critical); }
@@ -177,6 +176,18 @@ export const panelCss = /* css */ `
 @keyframes sk-panel-in {
   from { opacity: 0; transform: scale(0.86); filter: blur(6px); }
   to   { opacity: 1; transform: scale(1);    filter: blur(0); }
+}
+/* Closing must animate too, or the panel just vanishes mid-interaction —
+   the exact "jarring change" the entrance animation was built to avoid.
+   Quicker than the entrance (180ms vs 380ms): the user is dismissing, not
+   waiting to read something new, so the exit should get out of the way. */
+.sk-panel[data-closing] {
+  animation: sk-panel-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+@keyframes sk-panel-out {
+  from { opacity: 1; transform: scale(1);    filter: blur(0); }
+  to   { opacity: 0; transform: scale(0.92); filter: blur(4px); }
 }
 
 .sk-panel-head {
@@ -295,7 +306,6 @@ export const panelCss = /* css */ `
   color: var(--text-3);
   transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
-.sk-tile:hover { background: var(--panel-2); border-color: var(--line-2); }
 .sk-tile:active { transform: scale(0.99); }
 .sk-tile-icon {
   flex: none; width: 32px; height: 32px; border-radius: 10px;
@@ -326,6 +336,24 @@ export const panelCss = /* css */ `
 .sk-metric-label { font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-3); }
 .sk-metric-value { font-family: var(--mono); font-size: 19px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--text); }
 .sk-metric-target { font-size: 10px; color: var(--text-3); }
+
+/* Heading outline (SEO > Structure) */
+.sk-headingchain { display: flex; flex-direction: column; gap: 6px; }
+.sk-heading-break { display: flex; align-items: center; gap: 4px; }
+.sk-heading-sep { color: var(--text-3); font-size: 12px; }
+.sk-heading-sep.is-broken { color: var(--warning); font-weight: 700; }
+.sk-heading-chip {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 4px 8px; border-radius: var(--r-sm);
+  background: var(--chassis); border: 1px solid var(--line); color: var(--text-2);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+.sk-heading-chip:hover { border-color: var(--normal); color: var(--normal); background: var(--normal-dim); }
+.sk-heading-chip:active { transform: scale(0.96); }
+.sk-heading-chip.is-broken { border-color: var(--warning); color: var(--warning); background: var(--warning-dim); }
+.sk-heading-chip.is-broken:hover { border-color: var(--warning); color: var(--warning); background: var(--warning-dim); }
+.sk-empty-note { margin: 0; font-size: 11.5px; color: var(--text-3); }
 .sk-metric.is-critical .sk-metric-value { color: var(--critical); }
 .sk-metric.is-warning  .sk-metric-value { color: var(--warning); }
 .sk-metric.is-normal   .sk-metric-value { color: var(--normal); }
@@ -376,9 +404,9 @@ export const panelCss = /* css */ `
   color: var(--text-2);
 }
 .sk-path-text { font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
-.sk-path.is-actionable { transition: border-color 140ms ease, color 140ms ease, background 140ms ease; }
-.sk-path.is-actionable:hover { border-color: var(--normal); color: var(--normal); background: var(--normal-dim); }
+.sk-path.is-actionable { transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease; }
 .sk-path.is-actionable:active { transform: scale(0.98); }
+.sk-path.is-actionable.is-copied { border-color: var(--normal); color: var(--normal); background: var(--normal-dim); }
 
 /* Recommendations */
 .sk-reco { margin: 0; padding: 0; list-style: none; counter-reset: r; display: flex; flex-direction: column; gap: 8px; }
@@ -411,7 +439,6 @@ export const panelCss = /* css */ `
   text-align: center;
   transition: background 140ms ease, color 140ms ease;
 }
-.sk-subtab:hover { color: var(--text-2); }
 .sk-subtab.is-active { background: var(--panel-3); color: var(--text); }
 
 /* Platform preview mockups — deliberately hardcoded to each platform's own
@@ -471,7 +498,6 @@ export const panelCss = /* css */ `
   border: 1px solid var(--line); background: var(--panel);
   transition: color 140ms ease, border-color 140ms ease;
 }
-.sk-docs:hover { color: var(--text); border-color: var(--line-2); }
 .sk-linkrow { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ============ Tab bar ============ */
@@ -494,7 +520,6 @@ export const panelCss = /* css */ `
   color: var(--text-3);
   transition: color 140ms ease, background 140ms ease;
 }
-.sk-tab:hover { color: var(--text-2); background: var(--panel-2); }
 .sk-tab.is-active { color: var(--text); background: var(--panel-3); }
 .sk-tab-icon { position: relative; display: grid; place-items: center; }
 .sk-tab-dot {
@@ -521,11 +546,27 @@ export const panelCss = /* css */ `
   .sk-tilegrid { grid-template-columns: 1fr 1fr; }
 }
 
+/* ============ Pointer capability ============ */
+
+/* Hover styling only for input that can actually leave a hover state —
+   otherwise a touch tap "hovers" the element until the next tap lands
+   elsewhere, leaving a stuck highlight. This matters more than usual here:
+   below 620px this panel *is* the touch UI (bottom sheet), not a fallback. */
+@media (hover: hover) and (pointer: fine) {
+  .sk-iconbtn:hover { background: var(--panel-3); color: var(--text); }
+  .sk-tile:hover { background: var(--panel-2); border-color: var(--line-2); }
+  .sk-subtab:hover { color: var(--text-2); }
+  .sk-docs:hover { color: var(--text); border-color: var(--line-2); }
+  .sk-tab:hover { color: var(--text-2); background: var(--panel-2); }
+  .sk-path.is-actionable:hover { border-color: var(--normal); color: var(--normal); background: var(--normal-dim); }
+}
+
 /* ============ Accessibility preferences ============ */
 
 @media (prefers-reduced-motion: reduce) {
   .sk-bubble { transition: opacity 140ms ease, transform 1ms linear; }
   .sk-panel { animation: sk-fade-in 160ms ease both; }
+  .sk-panel[data-closing] { animation: sk-fade-out 120ms ease both; }
   .sk-ball, .sk-tile, .sk-path.is-actionable { transition: none; }
   .sk-ball[data-scanning] .sk-ball-face { animation: none; opacity: 0.7; }
   .sk-ball[data-expanded] { transform: none; }
@@ -533,6 +574,7 @@ export const panelCss = /* css */ `
   .sk-section { animation: none; }
 }
 @keyframes sk-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sk-fade-out { from { opacity: 1; } to { opacity: 0; } }
 
 @media (prefers-reduced-transparency: reduce) {
   .sk-panel, .sk-ball, .sk-bubble, .sk-ball-label {

@@ -1,7 +1,16 @@
 import type { CheckedSectionId, ScanResult, SiteIdentity } from '../../data/types';
 import { worstSeverity, type Severity } from '../severity';
 import { gatherLimits, evaluateLimits } from './limits';
-import { gatherGithubRef, gatherSitemap, gatherRedirects, gatherJsonSheet, gatherRobots, gatherNotFoundCheck, evaluateSiteLimits } from './siteLimits';
+import {
+  gatherGithubRef,
+  gatherSitemap,
+  gatherRedirects,
+  gatherJsonSheet,
+  gatherRobots,
+  gatherNotFoundCheck,
+  evaluateSiteLimits,
+  evaluateJsonSheetMetrics,
+} from './siteLimits';
 import { gatherBlockStructure, gatherEdsRuntimeDetected, evaluateBlockStructure } from './blockStructure';
 import { gatherConsistency, evaluateConsistency } from './consistency';
 import { gatherSecurity, evaluateSecurity } from './security';
@@ -121,14 +130,9 @@ export async function runScan(): Promise<ScanResult> {
   const { findings: socialFindings, cards: socialCards } = evaluateSocial(socialRaw);
   const securityFindings = evaluateSecurity(securityRaw);
   const limitFindings = evaluateLimits(limitsRaw);
-  const siteLimitFindings = evaluateSiteLimits(
-    refInfo,
-    sitemapInfo,
-    redirectsInfo,
-    { queryIndex: queryIndexInfo, metadata: metadataInfo, placeholders: placeholdersInfo },
-    robotsInfo,
-    notFoundInfo,
-  );
+  const jsonSheets = { queryIndex: queryIndexInfo, metadata: metadataInfo, placeholders: placeholdersInfo };
+  const siteLimitFindings = evaluateSiteLimits(refInfo, sitemapInfo, redirectsInfo, jsonSheets, robotsInfo, notFoundInfo);
+  const jsonSheetMetrics = evaluateJsonSheetMetrics(jsonSheets);
   const blockFindings = evaluateBlockStructure(blocks, edsRuntimeDetected);
   const consistencyFindings = evaluateConsistency(consistencyRaw);
   const accessibilityFindings = [...evaluateAccessibility(a11yViolations), ...evaluateHeadingStructure(seoRaw.headings)];
@@ -141,7 +145,7 @@ export async function runScan(): Promise<ScanResult> {
     seo: worstSeverity([...seoFindings, ...consistencyFindings].map((f) => f.severity)),
     social: worstSeverity(socialFindings.map((f) => f.severity)),
     security: worstSeverity(securityFindings.map((f) => f.severity)),
-    technical: worstSeverity([...limitFindings, ...siteLimitFindings, ...blockFindings].map((f) => f.severity)),
+    technical: worstSeverity([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
     accessibility: worstSeverity(accessibilityFindings.map((f) => f.severity)),
   };
 
@@ -150,7 +154,7 @@ export async function runScan(): Promise<ScanResult> {
     seo: tally([...seoFindings, ...consistencyFindings].map((f) => f.severity)),
     social: tally(socialFindings.map((f) => f.severity)),
     security: tally(securityFindings.map((f) => f.severity)),
-    technical: tally([...limitFindings, ...siteLimitFindings, ...blockFindings].map((f) => f.severity)),
+    technical: tally([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
     accessibility: tally(accessibilityFindings.map((f) => f.severity)),
   };
 
@@ -159,7 +163,9 @@ export async function runScan(): Promise<ScanResult> {
     seo: [...seoFindings, ...consistencyFindings].filter((f) => f.severity === 'critical' || f.severity === 'warning').length,
     social: socialFindings.filter((f) => f.severity !== 'normal').length,
     security: securityFindings.length,
-    technical: [...limitFindings, ...siteLimitFindings, ...blockFindings].filter((f) => f.severity !== 'idle').length,
+    technical:
+      [...limitFindings, ...siteLimitFindings, ...blockFindings].filter((f) => f.severity !== 'idle').length +
+      jsonSheetMetrics.filter((m) => m.severity === 'critical' || m.severity === 'warning').length,
     accessibility: accessibilityFindings.length,
   };
 
@@ -181,6 +187,7 @@ export async function runScan(): Promise<ScanResult> {
     securityFindings,
     limitFindings,
     siteLimitFindings,
+    jsonSheetMetrics,
     blockFindings,
     consistencyFindings,
     accessibilityFindings,

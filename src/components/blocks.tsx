@@ -1,8 +1,9 @@
 import type { ComponentChildren } from 'preact';
+import { useState } from 'preact/hooks';
 import type { Finding } from '../data/types';
 import type { Severity } from '../lib/severity';
 import { SEVERITY_LABEL } from '../lib/severity';
-import { TargetIcon, CheckIcon, PulseIcon } from './icons';
+import { TargetIcon, CopyIcon, CheckIcon, PulseIcon } from './icons';
 import { locateOnPage } from '../lib/locate';
 
 /** Section heading. Sections are built only from the blocks in this file. */
@@ -23,7 +24,21 @@ export function Block({ title, meta, children }: { title: string; meta?: Compone
  * the panel is to read everything wrong with the page in one pass.
  */
 export function FindingRow({ finding, onLocate }: { finding: Finding; onLocate?: () => void }) {
-  const canLocate = Boolean(finding.targetSelector);
+  const [copied, setCopied] = useState(false);
+  const canCopy = Boolean(finding.copyable && finding.path);
+  const canLocate = !canCopy && Boolean(finding.targetSelector);
+
+  async function copyPath() {
+    const fullUrl = `${window.location.origin}${finding.path}`;
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API unavailable or permission denied — nothing safe to fall back to.
+    }
+  }
+
   return (
     <article class={`sk-finding is-${finding.severity}`}>
       <div class="sk-finding-head">
@@ -43,7 +58,17 @@ export function FindingRow({ finding, onLocate }: { finding: Finding; onLocate?:
       )}
 
       {finding.path &&
-        (canLocate ? (
+        (canCopy ? (
+          <button
+            type="button"
+            class={`sk-path is-actionable${copied ? ' is-copied' : ''}`}
+            onClick={copyPath}
+            title={copied ? 'Copied' : `Copy ${window.location.origin}${finding.path}`}
+          >
+            <span class="sk-path-text">{finding.path}</span>
+            <CopyIcon size={13} />
+          </button>
+        ) : canLocate ? (
           <button
             type="button"
             class="sk-path is-actionable"
