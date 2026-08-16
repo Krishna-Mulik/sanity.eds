@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Runs when a consumer does `npm i sanity.eds -D` (or pnpm/yarn add -D).
-// Copies the pre-built, self-contained bundle out of node_modules and into
-// the consumer's own repo at tools/sanity/index.js — a path their own EDS
-// server actually serves, unlike node_modules. This is what lets the
-// consuming site load Sanity same-origin with zero build step of their own.
+// Copies the pre-built bundle out of node_modules and into the consumer's
+// own repo at tools/sanity/ — a path their own EDS server actually serves,
+// unlike node_modules. This is what lets the consuming site load Sanity
+// same-origin with zero build step of their own.
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -23,15 +23,25 @@ if (!packageRoot.split(path.sep).includes('node_modules')) {
 // run from, which is the consumer's project root — not process.cwd(),
 // which during a lifecycle script is the package's own directory.
 const consumerRoot = process.env.INIT_CWD || process.cwd();
-const src = path.join(packageRoot, 'dist-plugin', 'sanity.js');
+const srcDir = path.join(packageRoot, 'dist-plugin');
 const destDir = path.join(consumerRoot, 'tools', 'sanity');
-const dest = path.join(destDir, 'index.js');
 
-if (!fs.existsSync(src)) {
-  console.warn('[sanity.eds] dist-plugin/sanity.js not found in the package — skipping copy.');
+if (!fs.existsSync(srcDir)) {
+  console.warn('[sanity.eds] dist-plugin/ not found in the package — skipping copy.');
   process.exit(0);
 }
 
+// Copies every file dist-plugin/ contains, not just sanity.js: the entry
+// point only installs eager runtime-error capture and dynamically
+// import()s the actual panel UI (sanity-ui.js) from an adjacent path only
+// when mount() is called — that lazy chunk has to land next to index.js
+// for the relative import to resolve, or a Sidekick click would 404.
 fs.mkdirSync(destDir, { recursive: true });
-fs.copyFileSync(src, dest);
-console.log(`[sanity.eds] copied plugin bundle to ${path.relative(consumerRoot, dest)}`);
+let copied = 0;
+for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+  if (!entry.isFile()) continue;
+  const destName = entry.name === 'sanity.js' ? 'index.js' : entry.name;
+  fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, destName));
+  copied += 1;
+}
+console.log(`[sanity.eds] copied ${copied} file(s) to ${path.relative(consumerRoot, destDir)}`);

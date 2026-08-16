@@ -51,18 +51,48 @@ generating without looking at them defeats the point.
 
 ## Architecture
 
-### Mounting: no iframe, no palette
+### Mounting: no iframe, no palette — and lazy, not eager
 
 The entire premise is that this ships as part of a **target EDS site's own `scripts.js`**,
-not as a Sidekick iframe/popover. A Sidekick "Sanity" button only ever dispatches a
-`custom:sanity` `window` event (`src/main.tsx` → `src/lib/mount.tsx`). The panel mounts
-**eagerly** as soon as `initSanity()` runs — it's persistent chrome like a phone's assistive-
-touch ball, not something that appears only after a click — and creates its own
-`<div id="sanity-panel-host">` with `attachShadow({ mode: 'open' })`. All component CSS
-(`src/lib/tokens.css.ts` + `src/lib/panel.css.ts`) is concatenated into one `<style>` and
-injected into that shadow root. Nothing the panel does can leak style into the host page, and
-nothing the host page does can reach in — this is load-bearing, since the panel must render
-correctly over an arbitrary, unknown site.
+not as a Sidekick iframe/popover. A Sidekick "Sanity" button dispatches a `custom:sanity`
+`CustomEvent` **on the `<aem-sidekick>` element itself** — not `document`, not `window`, per
+[aem.live's sidekick-development
+docs](https://www.aem.live/developer/sidekick-development) — which is what `App.tsx`'s own
+internal listener targets (with the documented `sidekick-ready` fallback for the case Sidekick
+hasn't initialized yet).
+
+The distributable (`src/plugin-entry.ts`, built by `vite.plugin.config.ts` into `dist-plugin/`)
+is deliberately split into two chunks, not one eagerly-mounted bundle — `sanity.js` +
+`sanity-core.js` (~2.4KB, `installRuntimeErrorCapture()`, zero Preact/axe-core dependency) vs.
+`sanity-ui.js` (~290KB gzip, the actual panel: Preact + axe-core + every scan module). But per
+SETUP.md's documented consumer wiring, **nothing imports the entry point at all until a Sidekick
+user actually clicks the Sanity button** — the only `import('/tools/sanity/index.js')` a
+consumer's `scripts.js` ever does lives inside the `custom:sanity` event handler. This is
+intentional: Sanity is a developer/author tool, so a regular site visitor should fetch *zero*
+Sanity-related bytes, not even the cheap 2.4KB tier, until that event actually fires. The
+trade-off is real and worth stating plainly rather than glossing over: runtime-error capture
+only sees errors from that first click onward, never from page load — there is no way to see
+console/script/resource errors that fired before someone opened Sidekick and clicked Sanity, on
+top of the existing limitation of not seeing errors that fired before Sanity was on the page at
+all.
+
+Once the click happens, `mount(event.detail)` is what actually triggers the *second*, separate
+dynamic `import()` for `sanity-ui.js` — this is the point that installs error capture (now that
+the entry point has finally loaded) and, right after, fetches and mounts the panel UI. `mount()`
+is idempotent and passes `autoOpen: true` into `<App>` on first mount, so the panel opens on
+that very first click rather than needing a second one (the click that triggered the lazy load
+is long gone by the time `App`'s own listener would otherwise catch it).
+
+This replaced an earlier eager-mount design (`initSanity()` running unconditionally as an
+import side effect) that shipped the full ~290KB bundle, and a visible ball, to every visitor —
+including anonymous end users with no Sidekick at all.
+
+Once mounted, the panel creates its own `<div id="sanity-panel-host">` with
+`attachShadow({ mode: 'open' })`. All component CSS (`src/lib/tokens.css.ts` +
+`src/lib/panel.css.ts`) is concatenated into one `<style>` and injected into that shadow root.
+Nothing the panel does can leak style into the host page, and nothing the host page does can
+reach in — this is load-bearing, since the panel must render correctly over an arbitrary,
+unknown site.
 
 The one place style *does* have to cross that boundary: highlighting a target element for
 "locate on page" happens in the **light DOM** (`src/lib/locate.ts`), so severity colors are
@@ -74,8 +104,10 @@ properties, which wouldn't be visible outside the shadow root.
 `index.html` is not the product — it's a fake EDS page ("Cairn Supply Co.") standing in for
 the real host site, with `data-sanity-target="..."` attributes marking a few elements (hero
 image, subcopy, etc.) so their real findings get a clean, stable selector instead of a
-generated nth-of-type chain. `pnpm dev` boots this harness; a real integration would instead
-have the target site's own `scripts.js` import `initSanity()`.
+generated nth-of-type chain. `pnpm dev` boots this harness via `src/main.tsx`, which calls
+`initSanity()` eagerly and unconditionally — appropriate for a dev harness that always wants
+the panel visible, but not what ships to real consumers; see "Mounting" above for the real,
+lazy `mount()`-on-click distributable built from `src/plugin-entry.ts` instead.
 
 ### UI shell: ball → honeycomb cluster → phone panel
 
@@ -161,10 +193,15 @@ flags are invisible to page JS by browser design. Those show up as an explicit `
 ("Not checked") finding rather than being silently skipped or faked — keep that pattern for any
 new check that hits a similar wall. This also applies to the aem.live *asset size* limits
 (`limits.ts`): they only apply to same-origin content-bus assets, so a cross-origin image is
-reported as an explicit "out of scope" note, not silently measured as 0 bytes and passed — that
-was a real bug (Resource Timing zeroes `encodedBodySize`/`transferSize` for cross-origin
-resources without `Timing-Allow-Origin`) that made the whole section look inert. Same-origin
-asset sizing prefers a live HEAD fetch's `Content-Length` over Resource Timing for reliability.
+silently excluded from the size scan rather than measured as 0 bytes and passed — that avoids a
+real bug (Resource Timing zeroes `encodedBodySize`/`transferSize` for cross-origin resources
+without `Timing-Allow-Origin`) that used to make the whole section look inert. An earlier version
+surfaced this as its own "N assets hosted on another origin" idle note, but it added noise
+without being actionable — cross-origin exclusion is just documented here and in code comments
+now, not surfaced as a finding. Same-origin asset sizing prefers a live HEAD fetch's
+`Content-Length` over Resource Timing for reliability. `limits.ts` also discovers same-origin
+`.json` beyond the three conventional sheets (more on those below) — see `json` `LimitAssetKind`.
+
 `siteLimits.ts` covers the rest of the published limits page that isn't about *this* page: it
 parses `ref--repo--owner` straight off the `.aem.page`/`.aem.live` hostname (no API needed) for
 the 63-char/naming checks and to show the site identity in Summary, and fetches `/sitemap.xml`
@@ -175,15 +212,27 @@ three conventional top-level content-source JSON sheets — `/query-index.json`,
 resource) and, for the query index specifically, its row count against the 50,000-page index
 capacity from [aem.live/docs/large-sites](https://www.aem.live/docs/large-sites). A page/query-
 index count nearing the docs' *recommended* (not hard) 1M-page ceiling is a separate warning-level
-note, since that page also documents graduated advice (single index/sitemap/metadata sheet up to
-~50k pages, split into multiple indexes from 50k–1M, consider multiple repoless sites approaching
-1M) rather than one cliff. Sheets that aren't present at all get their own idle "not found, not
-necessarily a problem" note, same as sitemap/redirects — most sites don't have every sheet, and
-that's not an error. Locale-nested or custom-named sheets beyond these three conventional paths
-aren't enumerable from a single page scan, which gets one explicit scope note rather than silence.
-Every remaining category from the docs (GitHub Code Sync file/size-per-ref, Admin API rate
-limits, BYOM) gets its own explicitly labeled "not checkable, and why" note — never one blanket
-disclaimer.
+note in `evaluateSiteLimits()`, since that page also documents graduated advice (single
+index/sitemap/metadata sheet up to ~50k pages, split into multiple indexes from 50k–1M, consider
+multiple repoless sites approaching 1M) rather than one cliff. The three sheets themselves,
+though, are **not** Findings — `evaluateJsonSheetMetrics()` returns `Metric[]` instead (same
+shape `evaluateCwv()` uses for the CWV grid: `{id,label,value,target,severity}`), rendered as
+always-visible cards in the Technical → Limits tab's "JSON sheets" block (`value: 'Not found'`
+and `severity: 'idle'` when a sheet is absent, `formatBytes(...)` and a normal/warning/critical
+severity when present). An earlier version instead emitted a Finding per sheet (critical/warning
+when over cap, idle "not found" otherwise) plus one long prose "here's what we check and why"
+idle note — three silent passes next to a wall of text read as clutter, and Findings that never
+have a `targetSelector` (a JSON sheet isn't a DOM element) get little value from the Finding
+list's click-to-locate affordance anyway, so a metrics grid is a better fit than a Finding for
+this specific case. `limits.ts` separately discovers same-origin `.json` beyond these three
+conventional sheets — any `.json` this page links to (`a[href$=".json"]`) or actually fetched
+during load (via Resource Timing) gets the same generic asset-size *Finding* treatment as
+images/SVGs/videos (checked against the 6MB payload cap under a new `json` `LimitAssetKind`),
+explicitly excluding the three conventional sheet paths so the same file never gets both a card
+and a Finding. This is the only honest way to check "any JSON file" from a single page scan —
+there's no way to enumerate JSON a page never references. Every remaining category from the docs
+(GitHub Code Sync file/size-per-ref, Admin API rate limits, BYOM) gets its own explicitly labeled
+"not checkable, and why" note — never one blanket disclaimer.
 
 `siteLimits.ts` also covers two items from
 [aem.live/docs/go-live-checklist](https://www.aem.live/docs/go-live-checklist) that nothing
@@ -193,7 +242,12 @@ the pure, unit-tested `parseRobotsTxt()` for a `Sitemap:` directive and a blanke
 `Disallow: /` under `User-agent: *`; and it requests a deliberately random, guaranteed-nonexistent
 path to confirm the site actually responds `404` rather than silently `200` (a dev server's SPA
 fallback is a real, correctly-flagged example of this — proven live against `pnpm dev`, which has
-no server-level 404 handling).
+no server-level 404 handling). When the status isn't 404, `gatherNotFoundCheck()` also reads the
+response's `<title>`/`<h1>` against a small "not found" phrase list to tell apart two different
+failures that share the same wrong status code: a real dedicated error page just served with the
+wrong status (a config fix), versus no error page at all — the homepage or a bare SPA fallback
+serving identical content for every unmatched path (a bigger gap). Each gets its own finding
+title/detail rather than one generic "not 404" message for both.
 
 `seo.ts::checkCanonicalStatus()` fetches the canonical URL itself (same-origin only) to confirm it
 resolves with a direct 2xx — the go-live checklist calls out a canonical that redirects or errors
