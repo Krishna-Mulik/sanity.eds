@@ -64,8 +64,8 @@ docs.
 Sanity ships as a tiny entry point plus a UI chunk, and — because it's a developer/author tool,
 not something a regular visitor should pay for — **none of it loads at all until a Sidekick user
 actually clicks the Sanity button.** There's no top-level import anywhere in a consumer's
-`scripts/scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only at that
-point does the entry point run (installing error capture, ~2.4KB) and immediately trigger a
+`scripts/scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only
+at that point does the entry point run (installing error capture, ~2.4KB) and immediately trigger a
 second, separate fetch for the actual panel UI (Preact + axe-core, ~290KB gzip). A regular site
 visitor who never opens Sidekick fetches zero Sanity-related bytes and never sees the floating
 ball. It mounts into its own Shadow DOM once loaded, so nothing about the host page's styles can
@@ -86,9 +86,9 @@ the files have to live there to be loadable at all. Commit `tools/sanity/`.
 The same way [aem.live's sidekick-development
 docs](https://www.aem.live/developer/sidekick-development) show for any event-type plugin. Add
 this to `scripts/scripts.js` (not a new file — your project's existing one) — the relative path
-(not `/tools/sanity/index.js`) matters if your
-project lints imports with `eslint-plugin-import`, since `import/no-unresolved` can't resolve a
-root-absolute path back to a file on disk:
+(not `/tools/sanity/index.js`) matters if your project lints imports with
+`eslint-plugin-import`, since `import/no-unresolved` can't resolve a root-absolute path back to
+a file on disk:
 
 ```js
 function initSanity() {
@@ -144,7 +144,13 @@ loads same-origin from `tools/sanity/`.
 
 ```bash
 npm update sanity.eds
+node node_modules/sanity.eds/scripts/postinstall.js
 ```
 
-Re-runs the postinstall step and re-copies the newest build into `tools/sanity/` automatically —
-commit the resulting diff, nothing else to do.
+Run both, every time, as one step — not just the first one. This isn't a "just in case": npm's
+own postinstall for `sanity.eds` isn't guaranteed to fire on every update (when npm decides
+nothing in the dependency tree needs to change, it skips install scripts entirely, even if
+`tools/sanity/` happens to be missing or stale for an unrelated reason), so the second command
+is what actually guarantees `tools/sanity/` reflects what just got installed. It's cheap and
+side-effect-free to run unconditionally — it only ever copies 3 files, nothing else. Commit the
+resulting diff.
