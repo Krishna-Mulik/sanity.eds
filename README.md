@@ -10,6 +10,8 @@ issues, and lets an author or developer jump straight to the offending element o
 npm i sanity.eds -D
 ```
 
+**[→ Start with setup](#3-solution)**
+
 ## 1. Problem
 
 EDS enforces hard [content/code-bus limits](https://www.aem.live/docs/limits) — asset size caps
@@ -62,7 +64,7 @@ docs.
 Sanity ships as a tiny entry point plus a UI chunk, and — because it's a developer/author tool,
 not something a regular visitor should pay for — **none of it loads at all until a Sidekick user
 actually clicks the Sanity button.** There's no top-level import anywhere in a consumer's
-`scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only at that
+`scripts/scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only at that
 point does the entry point run (installing error capture, ~2.4KB) and immediately trigger a
 second, separate fetch for the actual panel UI (Preact + axe-core, ~290KB gzip). A regular site
 visitor who never opens Sidekick fetches zero Sanity-related bytes and never sees the floating
@@ -79,10 +81,14 @@ This drops the built files into **`tools/sanity/`** in your own repo automatical
 postinstall step — EDS serves pages from your site's own git repo, not from `node_modules`, so
 the files have to live there to be loadable at all. Commit `tools/sanity/`.
 
-### 2. Wire it into `scripts.js`
+### 2. Wire it into `scripts/scripts.js`
 
 The same way [aem.live's sidekick-development
-docs](https://www.aem.live/developer/sidekick-development) show for any event-type plugin:
+docs](https://www.aem.live/developer/sidekick-development) show for any event-type plugin. Add
+this to `scripts/scripts.js` (not a new file — your project's existing one) — the relative path
+(not `/tools/sanity/index.js`) matters if your
+project lints imports with `eslint-plugin-import`, since `import/no-unresolved` can't resolve a
+root-absolute path back to a file on disk:
 
 ```js
 function initSanity() {
@@ -92,7 +98,7 @@ function initSanity() {
     return;
   }
   sidekick.addEventListener('custom:sanity', async (event) => {
-    const { mount } = await import('/tools/sanity/index.js');
+    const { mount } = await import('../tools/sanity/index.js');
     mount(event.detail);
   });
 }

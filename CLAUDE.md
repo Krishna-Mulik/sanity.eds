@@ -66,8 +66,11 @@ is deliberately split into two chunks, not one eagerly-mounted bundle — `sanit
 `sanity-core.js` (~2.4KB, `installRuntimeErrorCapture()`, zero Preact/axe-core dependency) vs.
 `sanity-ui.js` (~290KB gzip, the actual panel: Preact + axe-core + every scan module). But per
 README.md's documented consumer wiring, **nothing imports the entry point at all until a Sidekick
-user actually clicks the Sanity button** — the only `import('/tools/sanity/index.js')` a
-consumer's `scripts.js` ever does lives inside the `custom:sanity` event handler. This is
+user actually clicks the Sanity button** — the only `import('../tools/sanity/index.js')` a
+consumer's `scripts.js` ever does lives inside the `custom:sanity` event handler (relative, not
+`/tools/sanity/index.js` — a root-absolute path trips `eslint-plugin-import`'s
+`import/no-unresolved` in projects that lint imports, e.g. aem-boilerplate's default config).
+This is
 intentional: Sanity is a developer/author tool, so a regular site visitor should fetch *zero*
 Sanity-related bytes, not even the cheap 2.4KB tier, until that event actually fires. The
 trade-off is real and worth stating plainly rather than glossing over: runtime-error capture
