@@ -53,6 +53,13 @@ export const tokensCss = /* css */ `
   --warning-dim: rgba(242, 181, 68, 0.14);
   --critical-dim: rgba(240, 82, 74, 0.15);
   --idle-dim: rgba(130, 130, 138, 0.14);
+  /* Verdict-banner border tints, one step more saturated than -dim — kept as
+     their own token (not built from -dim or var(--critical) at some opacity
+     inline) so light mode can carry its own, separately-tuned value instead
+     of inheriting dark's brighter hex, which is what shipped here before. */
+  --normal-border: rgba(62, 207, 142, 0.28);
+  --warning-border: rgba(240, 184, 73, 0.28);
+  --critical-border: rgba(255, 95, 82, 0.3);
 
   /* A fixed near-white/near-black pair for chrome drawn over unpredictable
      photos (social card platform badges) — this never flips with theme,
@@ -84,33 +91,57 @@ export const tokensCss = /* css */ `
    not the sage-tinted grays an "instrument" reading would reach for. Semantic
    colors are deepened, not just re-shaded — a naive lightness-flip of the
    dark palette's green/amber/red reads as pastel wash on white and falls
-   short of 4.5:1 at the small sizes this UI actually sets them at. */
+   short of 4.5:1 at the small sizes this UI actually sets them at.
+
+   Revised again for a real defect: the panel was reading as washed into the
+   host page rather than floating above it — --chassis-glass at 0.78 let ~22%
+   of an arbitrary (often warm/cream) host background bleed through the blur,
+   and --line/--line-2 were too faint to give surfaces a defined edge on a
+   near-white panel. Both raised here; dark is untouched since it never had
+   this problem (a translucent near-black reads as present regardless). The
+   old --warning (#916006) was also a genuine miss: an accessible amber this
+   dark reads as olive-brown, not "amber" — every other hue in this palette
+   reads clean at its required contrast, warning alone didn't. Replaced with
+   a burnt-orange in the same family GitHub/Linear/Radix actually ship for a
+   light-mode "attention" color (amber's native lightness fights AA contrast
+   on white; orange's doesn't), still verified computationally at 4.5:1+.
+
+   --text-2/--text-3 were a second instance of the same mistake at the
+   neutral scale itself: #55555c and #6b6b73 have R/G/B within ~7 of each
+   other, which reads as black diluted with white, not as a chosen color.
+   Replaced with an actual cool slate (R/G/B spread ~20+) — same lightness
+   steps, same job, but it now reads as an intentional gray rather than a
+   faded one. --idle stays equal to --text-3, as it was before, since the
+   two were already the same hex on purpose. */
 @media (prefers-color-scheme: light) {
   :host {
     --chassis: #e9e9ec;
-    --chassis-glass: rgba(233, 233, 236, 0.78);
+    --chassis-glass: rgba(236, 236, 239, 0.92);
     --panel: #f8f8f9;
     --panel-2: #fbfbfc;
     --panel-3: #ffffff;
 
-    --line: rgba(20, 20, 23, 0.09);
-    --line-2: rgba(20, 20, 23, 0.16);
+    --line: rgba(20, 20, 23, 0.11);
+    --line-2: rgba(20, 20, 23, 0.2);
 
     --text: #19191c;
-    --text-2: #55555c;
-    --text-3: #6b6b73;
+    --text-2: #424957;
+    --text-3: #5c6472;
 
     --normal: #167a49;
-    --warning: #916006;
+    --warning: #c2410c;
     --critical: #c22e20;
-    --idle: #6b6b73;
+    --idle: #5c6472;
     --normal-dim: rgba(22, 122, 73, 0.12);
-    --warning-dim: rgba(145, 96, 6, 0.12);
+    --warning-dim: rgba(194, 65, 12, 0.12);
     --critical-dim: rgba(194, 46, 32, 0.12);
-    --idle-dim: rgba(107, 107, 115, 0.12);
+    --idle-dim: rgba(92, 100, 114, 0.12);
+    --normal-border: rgba(22, 122, 73, 0.3);
+    --warning-border: rgba(194, 65, 12, 0.3);
+    --critical-border: rgba(194, 46, 32, 0.32);
 
-    --shadow: 0 18px 40px rgba(20, 20, 23, 0.14), 0 3px 10px rgba(20, 20, 23, 0.08);
-    --shadow-sm: 0 10px 22px rgba(20, 20, 23, 0.14);
+    --shadow: 0 20px 44px rgba(20, 20, 23, 0.16), 0 4px 12px rgba(20, 20, 23, 0.1);
+    --shadow-sm: 0 10px 24px rgba(20, 20, 23, 0.16);
     --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(20, 20, 23, 0.05);
     --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0));
 

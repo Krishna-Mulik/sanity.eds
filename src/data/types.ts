@@ -102,11 +102,17 @@ export interface SeoPageInfo {
   /** Headings in document order, for rendering the outline (H1 > H2 > H4...) and flagging skipped levels. */
   headings: HeadingOutlineItem[];
   imageCount: number;
+  /** Font families actually loaded for this render (CSS Font Loading API). */
+  fontsUsed: string[];
+  /** Images with no alt attribute at all, excluding ones marked decorative — same signal as axe-core's image-alt rule, shown here so the specific images are visible alongside the rest of the page's structure. */
+  imagesMissingAlt: { selector: string; src: string }[];
 }
 
 /** Everything one full scan produced, feeding every section of the panel. */
 export interface ScanResult {
   performanceScore: number;
+  /** Which device this scan's one CWV reading actually came from — see gatherFormFactor(). */
+  formFactor: 'Mobile' | 'Desktop';
   cwv: Metric[];
   renderBlockers: RenderBlocker[];
   recommendations: string[];
@@ -114,6 +120,8 @@ export interface ScanResult {
   seoFindings: Finding[];
   seoPageInfo: SeoPageInfo;
   linkStats: LinkStats;
+  /** Broken-link findings alone, for the Links tab's own list — also folded into seoFindings. */
+  linkFindings: Finding[];
   socialFindings: Finding[];
   socialCards: SocialCard[];
   securityFindings: Finding[];

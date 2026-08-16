@@ -33,10 +33,11 @@ import {
   evaluateLcpPayloadBudget,
   evaluateEarlyThirdPartyConnections,
   evaluateMeasurementScope,
+  gatherFormFactor,
   buildRecommendations,
 } from './performance';
 import { getRuntimeErrors, evaluateRuntimeErrors } from './runtimeErrors';
-import { gatherAccessibility, evaluateAccessibility, evaluateHeadingStructure } from './accessibility';
+import { gatherAccessibility, evaluateAccessibility, evaluateHeadingStructure, gatherImageAltInfo, evaluateEmptyAltImages } from './accessibility';
 
 function tally(list: Severity[]) {
   return {
@@ -54,9 +55,11 @@ export async function runScan(): Promise<ScanResult> {
   const renderBlockingCandidates = gatherRenderBlocking();
   const preloadHints = gatherPreloadHints();
   const blocks = gatherBlockStructure();
+  const formFactor = gatherFormFactor();
   const refInfo = gatherGithubRef();
   const faviconRaw = gatherFaviconLink();
   const edsRuntimeDetected = gatherEdsRuntimeDetected();
+  const imageAltInfo = gatherImageAltInfo();
 
   // Everything network- or timing-bound runs in parallel, each individually
   // bounded, so one slow check can't stall the whole scan.
@@ -108,7 +111,7 @@ export async function runScan(): Promise<ScanResult> {
   const lcpPayloadFindings = evaluateLcpPayloadBudget(cwvRaw.lcp, resources);
   const earlyThirdPartyFindings = evaluateEarlyThirdPartyConnections(cwvRaw.lcp, resources, pageOrigin);
   const preloadFindings = evaluatePreloadHints(preloadHints, pageOrigin);
-  const measurementScopeFindings = evaluateMeasurementScope(refInfo);
+  const measurementScopeFindings = evaluateMeasurementScope(refInfo, formFactor);
   const performanceFindings = [
     ...largeBundleFindings,
     ...duplicateFindings,
@@ -135,7 +138,11 @@ export async function runScan(): Promise<ScanResult> {
   const jsonSheetMetrics = evaluateJsonSheetMetrics(jsonSheets);
   const blockFindings = evaluateBlockStructure(blocks, edsRuntimeDetected);
   const consistencyFindings = evaluateConsistency(consistencyRaw);
-  const accessibilityFindings = [...evaluateAccessibility(a11yViolations), ...evaluateHeadingStructure(seoRaw.headings)];
+  const accessibilityFindings = [
+    ...evaluateAccessibility(a11yViolations),
+    ...evaluateHeadingStructure(seoRaw.headings),
+    ...evaluateEmptyAltImages(imageAltInfo),
+  ];
   const siteInfo: SiteIdentity | null = refInfo.matched
     ? { owner: refInfo.owner!, repo: refInfo.repo!, ref: refInfo.ref!, host: refInfo.host! }
     : null;
@@ -175,6 +182,7 @@ export async function runScan(): Promise<ScanResult> {
 
   return {
     performanceScore,
+    formFactor,
     cwv,
     renderBlockers,
     recommendations,
@@ -182,6 +190,7 @@ export async function runScan(): Promise<ScanResult> {
     seoFindings,
     seoPageInfo,
     linkStats,
+    linkFindings,
     socialFindings,
     socialCards,
     securityFindings,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type axe from 'axe-core';
-import { evaluateAccessibility, evaluateHeadingStructure } from './accessibility';
+import { evaluateAccessibility, evaluateHeadingStructure, evaluateEmptyAltImages, type ImageAltInfo } from './accessibility';
 import type { HeadingInfo } from './seo';
 
 function violation(overrides: Partial<axe.Result>): axe.Result {
@@ -43,14 +43,14 @@ describe('evaluateAccessibility', () => {
 });
 
 describe('evaluateHeadingStructure', () => {
-  it('flags multiple H1s — the one gap axe-core\'s heading-order/page-has-heading-one rules leave', () => {
+  it('flags multiple H1s as critical — the one gap axe-core\'s heading-order/page-has-heading-one rules leave', () => {
     const headings: HeadingInfo[] = [
       { level: 1, text: 'a', selector: 'h1:nth-of-type(1)' },
       { level: 1, text: 'b', selector: 'h1:nth-of-type(2)' },
     ];
     const findings = evaluateHeadingStructure(headings);
     expect(findings).toHaveLength(1);
-    expect(findings[0].severity).toBe('warning');
+    expect(findings[0].severity).toBe('critical');
     expect(findings[0].targetSelector).toBe('h1:nth-of-type(2)');
   });
 
@@ -62,5 +62,33 @@ describe('evaluateHeadingStructure', () => {
   it('does not flag zero H1s — that is axe-core\'s page-has-heading-one, not ours to duplicate', () => {
     const headings: HeadingInfo[] = [{ level: 2, text: 'a', selector: 'h2' }];
     expect(evaluateHeadingStructure(headings)).toHaveLength(0);
+  });
+});
+
+describe('evaluateEmptyAltImages', () => {
+  function image(overrides: Partial<ImageAltInfo> = {}): ImageAltInfo {
+    return { hasAlt: true, alt: '', width: 400, height: 300, selector: 'img.hero', ...overrides };
+  }
+
+  it('flags a content-sized image with an empty alt attribute — axe treats alt="" as decorative and never sees this', () => {
+    const findings = evaluateEmptyAltImages([image()]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('warning');
+    expect(findings[0].targetSelector).toBe('img.hero');
+  });
+
+  it('does not flag a small icon-sized image with an empty alt — routinely decorative', () => {
+    const findings = evaluateEmptyAltImages([image({ width: 20, height: 20 })]);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does not flag an image with real alt text', () => {
+    const findings = evaluateEmptyAltImages([image({ alt: 'A trail pack on a ridge' })]);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does not flag an image with no alt attribute at all — that is axe-core\'s image-alt rule to catch', () => {
+    const findings = evaluateEmptyAltImages([image({ hasAlt: false, alt: null })]);
+    expect(findings).toHaveLength(0);
   });
 });

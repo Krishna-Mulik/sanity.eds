@@ -138,13 +138,18 @@ nothing of their own:
 - `MetricCell` — label, value, target.
 - `AllClear` — the empty state.
 
-The launcher is a docked assistive ball. Hovering (or tapping) pops six section bubbles into
-a **honeycomb cluster** beside it, laid out in `src/lib/geometry.ts`: two hex-packed columns
-of three, neighbouring columns `sin(60°)` apart and staggered half a step, with gaps sized
-for the count badge that overhangs each bubble's corner. An arc was tried first and rejected
-— six bubbles on an arc must reach far across the host page to stop touching, while hex
-packing keeps them adjacent and close to the thing that opened them. The cluster slides
-vertically as a whole when the ball sits near the top or bottom of the viewport.
+The launcher is a docked assistive ball. Hovering it pops the section bubbles into a
+**honeycomb cluster** beside it, laid out in `src/lib/geometry.ts`: hex-packed columns,
+neighbouring columns `sin(60°)` apart and staggered half a step, with gaps sized for the
+count badge that overhangs each bubble's corner. An arc was tried first and rejected — bubbles
+on an arc must reach far across the host page to stop touching, while hex packing keeps them
+adjacent and close to the thing that opened them. The cluster slides vertically as a whole
+when the ball sits near the top or bottom of the viewport.
+
+Clicking the ball itself — rather than a bubble, and rather than toggling the cluster — opens
+straight to Summary. The cluster is a hover preview of per-section severity, not a menu a
+click has to pass through first; every other section is one tap away regardless, via the
+panel's own tab bar once it's open.
 
 Choosing a bubble grows a phone-shaped panel out of the ball's position, with a six-item tab
 bar at the foot.

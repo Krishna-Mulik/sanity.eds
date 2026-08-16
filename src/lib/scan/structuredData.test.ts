@@ -6,10 +6,10 @@ function block(raw: unknown, selector = 'script'): JsonLdBlock {
 }
 
 describe('evaluateStructuredData', () => {
-  it('notes (does not error) when there is no structured data at all', () => {
+  it('warns (does not error) when there is no structured data at all', () => {
     const findings = evaluateStructuredData([]);
     expect(findings).toHaveLength(1);
-    expect(findings[0].severity).toBe('idle');
+    expect(findings[0].severity).toBe('warning');
   });
 
   it('flags invalid JSON as critical', () => {

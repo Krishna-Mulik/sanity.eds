@@ -43,6 +43,30 @@ function collectBuffered(type: string, waitMs: number): Promise<PerformanceEntry
   });
 }
 
+export type FormFactor = 'Mobile' | 'Desktop';
+
+/**
+ * The CWV grid below is one real measurement from whatever device this scan
+ * actually ran on — there's no way to also produce a second, different-
+ * device reading from inside that same page session. A lab tool like
+ * PageSpeed Insights gets a genuine mobile-vs-desktop pair by running two
+ * separate emulated Lighthouse audits (a throttled Moto G Power profile,
+ * and an unthrottled desktop one); this scan only ever has the one browser
+ * it's actually running in. So rather than silently presenting a single
+ * reading as if it applied to both, the grid is labeled with which device
+ * it came from — `navigator.userAgentData.mobile` when the browser exposes
+ * it (Chromium), else a viewport-width heuristic.
+ */
+export function classifyFormFactor(viewportWidth: number, isMobileUA?: boolean): FormFactor {
+  if (isMobileUA != null) return isMobileUA ? 'Mobile' : 'Desktop';
+  return viewportWidth < 768 ? 'Mobile' : 'Desktop';
+}
+
+export function gatherFormFactor(win: Window = window): FormFactor {
+  const uaData = (win.navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+  return classifyFormFactor(win.innerWidth, uaData?.mobile);
+}
+
 export async function gatherCwv(): Promise<RawCwv> {
   const [lcpEntries, clsEntries, paintEntries, eventEntries] = await Promise.all([
     collectBuffered('largest-contentful-paint', 200),
@@ -93,6 +117,16 @@ export function computeScore(cwv: Metric[]): number {
   return Math.round(total / counted.length);
 }
 
+/** The Speed section's own /100 score banner — a different scale from the
+ * per-metric CWV severities it's built from, so it needs its own thresholds
+ * rather than reusing sectionSeverity: below 90 is red, below 95 is yellow,
+ * 95 and up is green. */
+export function scoreSeverity(score: number): Severity {
+  if (score < 90) return 'critical';
+  if (score < 95) return 'warning';
+  return 'normal';
+}
+
 export interface ResourceInfo {
   name: string;
   initiatorType: string;
@@ -103,10 +137,33 @@ export interface ResourceInfo {
   /** When the request began — used for the early-third-party-connection check. */
   startTime?: number;
   origin?: string | null;
+  /**
+   * The browser's own call on whether this resource blocked first paint
+   * (PerformanceResourceTiming.renderBlockingStatus — Chrome-only, not yet
+   * in TS's DOM lib, hence the cast at the read site). `undefined` in
+   * browsers that don't support the field.
+   */
+  renderBlockingStatus?: string;
+}
+
+// The directory this scan code itself was loaded from — its own bundled
+// chunk's URL, e.g. https://example.com/tools/sanity/. A real site visitor
+// never fetches this: Sanity only pulls it in lazily, the moment someone
+// clicks the Sidekick button (see plugin-entry.ts). Its own footprint
+// landing in Resource Timing right as the scan runs — the same window
+// these checks measure — would otherwise get graded against the page's own
+// performance budget, which is a category error: it's the audit tool's
+// weight, not the page's. Derived from import.meta.url rather than a
+// hardcoded "/tools/sanity/" guess, since a consumer can install the
+// distributable under any path (see README.md).
+const SELF_DIR = new URL('.', import.meta.url).href;
+
+export function excludeOwnResources(resources: ResourceInfo[], selfDir: string): ResourceInfo[] {
+  return resources.filter((r) => !r.name.startsWith(selfDir));
 }
 
 export function gatherResources(win: Window = window): ResourceInfo[] {
-  return (win.performance.getEntriesByType('resource') as PerformanceResourceTiming[]).map((e) => {
+  const all = (win.performance.getEntriesByType('resource') as PerformanceResourceTiming[]).map((e) => {
     let origin: string | null = null;
     try {
       origin = new URL(e.name).origin;
@@ -121,8 +178,10 @@ export function gatherResources(win: Window = window): ResourceInfo[] {
       responseEnd: e.responseEnd,
       startTime: e.startTime,
       origin,
+      renderBlockingStatus: (e as PerformanceResourceTiming & { renderBlockingStatus?: string }).renderBlockingStatus,
     };
   });
+  return excludeOwnResources(all, SELF_DIR);
 }
 
 export interface RenderBlockerCandidate {
@@ -149,8 +208,29 @@ export function gatherRenderBlocking(doc: Document = document): RenderBlockerCan
   return blockers;
 }
 
+/**
+ * `gatherRenderBlocking`'s DOM query only sees a snapshot of <head> at scan
+ * time — after the whole page, including every EDS block, has already
+ * loaded. `scripts/aem.js`'s loadCSS() appends each block's own stylesheet
+ * to <head> as it decorates, long after the page already painted; by scan
+ * time those look identical to a stylesheet that was genuinely present in
+ * the original markup and blocked first paint. Resource Timing's own
+ * `renderBlockingStatus` (Chrome) is the browser's authoritative record of
+ * which resources actually blocked rendering, so it's used to narrow the
+ * DOM-derived candidates down to the real ones whenever it's available —
+ * confirmed against a real EDS page where the DOM heuristic alone flagged 8
+ * stylesheets but only 1 (the page's own styles.css) actually blocked
+ * anything; the other 7 were per-block CSS added after first paint.
+ * Falls back to the DOM heuristic untouched in browsers that don't expose
+ * the field (Firefox, Safari) rather than silently reporting nothing.
+ */
 export function evaluateRenderBlocking(candidates: RenderBlockerCandidate[], resources: ResourceInfo[], pageOrigin = ''): RenderBlocker[] {
-  return candidates.map((c) => {
+  const signalSupported = resources.some((r) => r.renderBlockingStatus != null);
+  const actualBlockers = signalSupported
+    ? candidates.filter((c) => resources.find((r) => r.name === c.path)?.renderBlockingStatus === 'blocking')
+    : candidates;
+
+  return actualBlockers.map((c) => {
     const res = resources.find((r) => r.name === c.path);
     const blockingMs = res ? Math.round(res.duration) : 0;
     return {
@@ -204,7 +284,18 @@ const LCP_PAYLOAD_BUDGET = 100 * 1024;
  * the LCP candidate renders under ~100KB to reliably land LCP under
  * ~1.5s on mobile. This is EDS-specific numeric guidance a generic
  * Lighthouse score doesn't expose directly (Lighthouse reports LCP
- * timing, not a byte budget leading up to it).
+ * timing, not a byte budget leading up to it) — there's no equivalent
+ * named audit in PageSpeed Insights to cross-check this against.
+ *
+ * This is measured on whatever network the current browser session
+ * actually has — a fast office wifi/broadband connection loads far more
+ * "before LCP" than the same page would under the throttled slow-4G
+ * mobile conditions the 100KB figure assumes, simply because nothing has
+ * to wait its turn. A critical finding here on a fast connection is real
+ * signal (that payload exists and will cost mobile users something), but
+ * the byte total isn't directly comparable to a lab tool run under
+ * controlled throttling — the detail text says so explicitly rather than
+ * implying this number would reproduce on PageSpeed Insights.
  */
 export function evaluateLcpPayloadBudget(lcp: number | null, resources: ResourceInfo[]): Finding[] {
   if (lcp == null) return [];
@@ -216,7 +307,8 @@ export function evaluateLcpPayloadBudget(lcp: number | null, resources: Resource
     {
       id: 'perf-lcp-payload-budget',
       title: 'Payload before LCP exceeds the ~100KB budget',
-      detail: 'aem.live\'s "Keeping it 100" guidance targets under 100KB of total network payload before the LCP candidate renders, to reliably land LCP under ~1.5s on mobile.',
+      detail:
+        'aem.live\'s "Keeping it 100" guidance targets under 100KB of total network payload before the LCP candidate renders, to reliably land LCP under ~1.5s on mobile. Measured on this browser\'s current network conditions, not a throttled mobile simulation — a fast connection can show more payload landing "before LCP" than a real mobile visitor would experience it. Compare against PageSpeed Insights (Mobile) for a throttled baseline.',
       severity: totalBytes > LCP_PAYLOAD_BUDGET * 2 ? 'critical' : 'warning',
       measured: formatBytes(totalBytes),
       allowed: formatBytes(LCP_PAYLOAD_BUDGET),
@@ -309,14 +401,13 @@ export function evaluatePreloadHints(hints: PreloadHint[], pageOrigin = ''): Fin
  * above. That caveat previously only existed as a code comment; this
  * surfaces it to whoever is actually reading the panel.
  */
-export function evaluateMeasurementScope(ref: GithubRefInfo): Finding[] {
+export function evaluateMeasurementScope(ref: GithubRefInfo, formFactor: FormFactor): Finding[] {
   if (!ref.matched || !ref.host) return [];
   return [
     {
       id: 'perf-measurement-scope',
       title: `Measured on ${ref.host}, not the production CDN`,
-      detail:
-        "aem.live's testing guidance treats .aem.page and .aem.live as preview/delivery tiers, not the production CDN a real visitor hits — and treats field RUM data from actual production traffic as the authoritative performance source, not a single-session in-browser measurement like this one.",
+      detail: `aem.live's testing guidance treats .aem.page and .aem.live as preview/delivery tiers, not the production CDN a real visitor hits — and treats field RUM data from actual production traffic as the authoritative performance source, not a single-session in-browser measurement like this one. It's also one device: this reading came from a ${formFactor.toLowerCase()} browser, not a mobile+desktop pair — check PageSpeed Insights' own Mobile link if you're on desktop, since that's usually the stricter target.`,
       severity: 'idle',
     },
   ];

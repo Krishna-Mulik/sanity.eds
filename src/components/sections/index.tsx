@@ -3,8 +3,10 @@ import { Block, FindingRow, MetricCell, AllClear, Loading, SeverityCounts, SubTa
 import { buildSectionDefs } from '../../data/sections';
 import { useScan } from '../../lib/scanContext';
 import type { SectionId, SocialCard, HeadingOutlineItem } from '../../data/types';
-import { ChevronRightIcon } from '../icons';
+import { ChevronRightIcon, TargetIcon } from '../icons';
 import { locateOnPage } from '../../lib/locate';
+import { scoreSeverity } from '../../lib/scan/performance';
+import { relativizeUrl } from '../../lib/format';
 
 interface SectionProps {
   onLocate: () => void;
@@ -77,11 +79,11 @@ export function PerformanceSection({ onLocate }: SectionProps) {
   const { result } = useScan();
   if (!result) return <Loading label="Measuring performance…" />;
 
-  const { performanceScore, cwv, renderBlockers, recommendations, performanceFindings, sectionSeverity } = result;
+  const { performanceScore, formFactor, cwv, renderBlockers, recommendations, performanceFindings } = result;
 
   return (
     <>
-      <div class={`sk-verdict is-${sectionSeverity.performance}`}>
+      <div class={`sk-verdict is-${scoreSeverity(performanceScore)}`}>
         <div class="sk-score">
           <span class="sk-score-num">{performanceScore}</span>
           <span class="sk-score-unit">/100</span>
@@ -93,7 +95,7 @@ export function PerformanceSection({ onLocate }: SectionProps) {
         </p>
       </div>
 
-      <Block title="Core Web Vitals" meta="this session">
+      <Block title="Core Web Vitals" meta={`${formFactor} · this session`}>
         <div class="sk-metricgrid">
           {cwv.map((m) => (
             <MetricCell key={m.id} label={m.label} value={m.value} target={m.target} severity={m.severity} />
@@ -138,8 +140,22 @@ export function PerformanceSection({ onLocate }: SectionProps) {
       )}
 
       <div class="sk-linkrow">
-        <a class="sk-docs" href={`https://pagespeed.web.dev/report?url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noreferrer">
-          <span>Test with PageSpeed Insights</span>
+        <a
+          class="sk-docs"
+          href={`https://pagespeed.web.dev/report?url=${encodeURIComponent(window.location.href)}&form_factor=mobile`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span>PageSpeed Insights — Mobile</span>
+          <ChevronRightIcon size={13} />
+        </a>
+        <a
+          class="sk-docs"
+          href={`https://pagespeed.web.dev/report?url=${encodeURIComponent(window.location.href)}&form_factor=desktop`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span>PageSpeed Insights — Desktop</span>
           <ChevronRightIcon size={13} />
         </a>
         <a class="sk-docs" href={`https://www.webpagetest.org/?url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noreferrer">
@@ -208,12 +224,46 @@ function HeadingOutline({ headings, onLocate }: { headings: HeadingOutlineItem[]
   );
 }
 
+/**
+ * Images missing alt text, same signal as axe-core's image-alt rule
+ * (Accessibility section already owns the pass/fail verdict on this) —
+ * shown again here as a visual aid so the specific offending images are
+ * visible while looking at the rest of the page's structure, same
+ * reasoning as the heading outline above.
+ */
+function MissingAltImages({ images, onLocate }: { images: { selector: string; src: string }[]; onLocate?: () => void }) {
+  if (!images.length) return null;
+  const origin = window.location.origin;
+
+  return (
+    <div class="sk-rows">
+      {images.map((img) => (
+        <button
+          type="button"
+          class="sk-row is-actionable"
+          key={img.selector}
+          onClick={() => {
+            locateOnPage(img.selector, 'warning');
+            onLocate?.();
+          }}
+        >
+          <div class="sk-row-main">
+            <span class="sk-row-path">{relativizeUrl(img.src, origin)}</span>
+            <span class="sk-row-detail">No alt attribute, and not marked decorative</span>
+          </div>
+          <TargetIcon size={13} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SeoSection({ onLocate }: SectionProps) {
   const { result } = useScan();
   const [tab, setTab] = useState<SeoTab>('Findings');
   if (!result) return <Loading label="Checking SEO signals…" />;
 
-  const { seoFindings, seoPageInfo, linkStats, consistencyFindings } = result;
+  const { seoFindings, seoPageInfo, linkStats, linkFindings, consistencyFindings } = result;
   const origin = window.location.origin;
 
   const infoRows: { label: string; value: string }[] = [
@@ -272,7 +322,13 @@ export function SeoSection({ onLocate }: SectionProps) {
           <Block title="Page structure">
             <div class="sk-metricgrid">
               {seoPageInfo.headingCounts.map((count, i) => (
-                <MetricCell key={`h${i + 1}`} label={`H${i + 1}`} value={String(count)} target="headings" severity="normal" />
+                <MetricCell
+                  key={`h${i + 1}`}
+                  label={`H${i + 1}`}
+                  value={String(count)}
+                  target="headings"
+                  severity={i === 0 && count > 1 ? 'critical' : 'normal'}
+                />
               ))}
               <MetricCell label="Images" value={String(seoPageInfo.imageCount)} target="on page" severity="normal" />
               <MetricCell label="Links" value={String(linkStats.total)} target="on page" severity="normal" />
@@ -284,25 +340,55 @@ export function SeoSection({ onLocate }: SectionProps) {
               <HeadingOutline headings={seoPageInfo.headings} onLocate={onLocate} />
             </Block>
           )}
+
+          {seoPageInfo.imagesMissingAlt.length > 0 && (
+            <Block title="Images missing alt text" meta={`${seoPageInfo.imagesMissingAlt.length}`}>
+              <MissingAltImages images={seoPageInfo.imagesMissingAlt} onLocate={onLocate} />
+            </Block>
+          )}
+
+          {seoPageInfo.fontsUsed.length > 0 && (
+            <Block title="Fonts" meta={`${seoPageInfo.fontsUsed.length} loaded`}>
+              <div class="sk-fontlist">
+                {seoPageInfo.fontsUsed.map((font) => (
+                  <span class="sk-font-chip" key={font}>
+                    {font}
+                  </span>
+                ))}
+              </div>
+            </Block>
+          )}
         </>
       )}
 
       {tab === 'Links' && (
-        <Block title="Link analysis" meta={`${linkStats.checked} of ${linkStats.unique} checked`}>
-          <div class="sk-metricgrid">
-            <MetricCell label="Total" value={String(linkStats.total)} target="on page" severity="normal" />
-            <MetricCell label="Unique" value={String(linkStats.unique)} target="URLs" severity="normal" />
-            <MetricCell label="Internal" value={String(linkStats.internal)} target="same origin" severity="normal" />
-            <MetricCell label="External" value={String(linkStats.external)} target="other origins" severity="normal" />
-            <MetricCell label="No title attr" value={String(linkStats.missingTitle)} target="of total" severity="normal" />
-            <MetricCell
-              label="Broken"
-              value={String(linkStats.broken)}
-              target="checked links"
-              severity={linkStats.broken > 0 ? 'critical' : 'normal'}
-            />
-          </div>
-        </Block>
+        <>
+          <Block title="Link analysis" meta={`${linkStats.checked} of ${linkStats.unique} checked`}>
+            <div class="sk-metricgrid">
+              <MetricCell label="Total" value={String(linkStats.total)} target="on page" severity="normal" />
+              <MetricCell label="Unique" value={String(linkStats.unique)} target="URLs" severity="normal" />
+              <MetricCell label="Internal" value={String(linkStats.internal)} target="same origin" severity="normal" />
+              <MetricCell label="External" value={String(linkStats.external)} target="other origins" severity="normal" />
+              <MetricCell label="No title attr" value={String(linkStats.missingTitle)} target="of total" severity="normal" />
+              <MetricCell
+                label="Broken"
+                value={String(linkStats.broken)}
+                target="checked links"
+                severity={linkStats.broken > 0 ? 'critical' : 'normal'}
+              />
+            </div>
+          </Block>
+
+          {linkFindings.length > 0 && (
+            <Block title="Broken links" meta={`${linkFindings.length} returning an error`}>
+              <div class="sk-findings">
+                {linkFindings.map((f) => (
+                  <FindingRow finding={f} onLocate={onLocate} key={f.id} />
+                ))}
+              </div>
+            </Block>
+          )}
+        </>
       )}
 
       {tab === 'Preview vs Live' && (

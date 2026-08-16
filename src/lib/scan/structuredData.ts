@@ -60,7 +60,7 @@ export function evaluateStructuredData(blocks: JsonLdBlock[]): Finding[] {
       id: 'schema-none',
       title: 'No structured data found',
       detail: 'Not required for every page, but JSON-LD helps search engines understand rich content like products or articles.',
-      severity: 'idle',
+      severity: 'warning',
     });
     return findings;
   }

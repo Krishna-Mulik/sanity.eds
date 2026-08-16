@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateSeo, buildSeoPageInfo, evaluateCanonicalStatus, type SeoRawData, type CanonicalCheckResult } from './seo';
+import {
+  evaluateSeo,
+  buildSeoPageInfo,
+  evaluateCanonicalStatus,
+  selectImagesMissingAlt,
+  type SeoRawData,
+  type CanonicalCheckResult,
+  type RawImageInfo,
+} from './seo';
 
 function base(overrides: Partial<SeoRawData> = {}): SeoRawData {
   return {
@@ -16,6 +24,8 @@ function base(overrides: Partial<SeoRawData> = {}): SeoRawData {
     imageCount: 0,
     headings: [{ level: 1, text: 'Title', selector: 'h1' }],
     textNodes: [],
+    fontsUsed: [],
+    imagesMissingAlt: [],
     ...overrides,
   };
 }
@@ -142,6 +152,41 @@ describe('buildSeoPageInfo', () => {
     ];
     const info = buildSeoPageInfo(base({ headings }));
     expect(info.headings).toEqual(headings);
+  });
+
+  it('carries the fonts-used list through unchanged', () => {
+    const info = buildSeoPageInfo(base({ fontsUsed: ['Inter', 'Georgia'] }));
+    expect(info.fontsUsed).toEqual(['Inter', 'Georgia']);
+  });
+
+  it('carries the images-missing-alt list through unchanged', () => {
+    const imagesMissingAlt = [{ selector: 'img.hero', src: 'https://example.com/hero.jpg' }];
+    const info = buildSeoPageInfo(base({ imagesMissingAlt }));
+    expect(info.imagesMissingAlt).toEqual(imagesMissingAlt);
+  });
+});
+
+describe('selectImagesMissingAlt', () => {
+  function image(overrides: Partial<RawImageInfo> = {}): RawImageInfo {
+    return { hasAlt: false, role: null, ariaHidden: null, selector: 'img.hero', src: 'https://example.com/hero.jpg', ...overrides };
+  }
+
+  it('flags an image with no alt attribute at all', () => {
+    const result = selectImagesMissingAlt([image()]);
+    expect(result).toEqual([{ selector: 'img.hero', src: 'https://example.com/hero.jpg' }]);
+  });
+
+  it('does not flag an image that has an alt attribute, even an empty one — that is a different, separate check', () => {
+    expect(selectImagesMissingAlt([image({ hasAlt: true })])).toHaveLength(0);
+  });
+
+  it('does not flag an image explicitly marked decorative via role="presentation" or role="none"', () => {
+    expect(selectImagesMissingAlt([image({ role: 'presentation' })])).toHaveLength(0);
+    expect(selectImagesMissingAlt([image({ role: 'none' })])).toHaveLength(0);
+  });
+
+  it('does not flag an image explicitly hidden from the accessibility tree via aria-hidden="true"', () => {
+    expect(selectImagesMissingAlt([image({ ariaHidden: 'true' })])).toHaveLength(0);
   });
 });
 

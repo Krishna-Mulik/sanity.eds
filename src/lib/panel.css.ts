@@ -269,9 +269,9 @@ export const panelCss = /* css */ `
   display: flex; flex-direction: column; gap: 6px;
   transition: background-color 200ms ease, border-color 200ms ease;
 }
-.sk-verdict.is-critical { background: linear-gradient(180deg, var(--critical-dim), transparent 70%), var(--panel); border-color: rgba(255,95,82,0.3); }
-.sk-verdict.is-warning  { background: linear-gradient(180deg, var(--warning-dim), transparent 70%), var(--panel); border-color: rgba(240,184,73,0.28); }
-.sk-verdict.is-normal   { background: linear-gradient(180deg, var(--normal-dim), transparent 70%), var(--panel); border-color: rgba(62,207,142,0.28); }
+.sk-verdict.is-critical { background: linear-gradient(180deg, var(--critical-dim), transparent 70%), var(--panel); border-color: var(--critical-border); }
+.sk-verdict.is-warning  { background: linear-gradient(180deg, var(--warning-dim), transparent 70%), var(--panel); border-color: var(--warning-border); }
+.sk-verdict.is-normal   { background: linear-gradient(180deg, var(--normal-dim), transparent 70%), var(--panel); border-color: var(--normal-border); }
 
 .sk-verdict-counts { display: flex; align-items: baseline; gap: 7px; }
 .sk-verdict-num {
@@ -354,6 +354,14 @@ export const panelCss = /* css */ `
 .sk-heading-chip.is-broken { border-color: var(--warning); color: var(--warning); background: var(--warning-dim); }
 .sk-heading-chip.is-broken:hover { border-color: var(--warning); color: var(--warning); background: var(--warning-dim); }
 .sk-empty-note { margin: 0; font-size: 11.5px; color: var(--text-3); }
+
+/* Fonts (SEO > Structure) */
+.sk-fontlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-font-chip {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 4px 8px; border-radius: var(--r-sm);
+  background: var(--chassis); border: 1px solid var(--line); color: var(--text-2);
+}
 .sk-metric.is-critical .sk-metric-value { color: var(--critical); }
 .sk-metric.is-warning  .sk-metric-value { color: var(--warning); }
 .sk-metric.is-normal   .sk-metric-value { color: var(--normal); }
@@ -367,6 +375,12 @@ export const panelCss = /* css */ `
 .sk-row-value { margin-left: auto; flex: none; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: -0.01em; }
 .sk-row.is-critical .sk-row-value { color: var(--critical); }
 .sk-row.is-warning  .sk-row-value { color: var(--warning); }
+.sk-row.is-actionable {
+  width: 100%; border: none; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.sk-row.is-actionable:hover { background: var(--chassis); color: var(--normal); }
+.sk-row.is-actionable:active { background: var(--chassis); }
 
 /* Findings — always open, never an accordion */
 .sk-findings { display: flex; flex-direction: column; gap: 8px; }
@@ -503,6 +517,7 @@ export const panelCss = /* css */ `
 /* ============ Tab bar ============ */
 
 .sk-tabbar {
+  position: relative; /* anchors .sk-tab-indicator */
   flex: none;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
@@ -510,7 +525,26 @@ export const panelCss = /* css */ `
   padding: 8px 8px 10px;
   border-top: 1px solid var(--line);
 }
+/* A slim traveling underline, not a filled chip — it replaces the segment of
+   the tab bar's own border-top above the active tab, the same way a browser
+   or document tab bar shows which page a strip of content belongs to. Only
+   the geometry changed from the first version (which used a full rounded
+   box here); the travel itself — one element sliding via --tab-count/
+   --active-index rather than N background swaps — is unchanged. */
+.sk-tab-indicator {
+  position: absolute;
+  top: -1px;
+  left: 8px;
+  height: 2px;
+  width: calc((100% - 16px - (var(--tab-count, 1) - 1) * 2px) / var(--tab-count, 1));
+  transform: translateX(calc(var(--active-index, 0) * (100% + 2px)));
+  background: var(--text);
+  border-radius: 0 0 2px 2px;
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
 .sk-tab {
+  position: relative;
+  z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   min-width: 0; /* grid items don't shrink past their content's intrinsic
     width by default — without this the label below forces the whole
@@ -520,7 +554,7 @@ export const panelCss = /* css */ `
   color: var(--text-3);
   transition: color 140ms ease, background 140ms ease;
 }
-.sk-tab.is-active { color: var(--text); background: var(--panel-3); }
+.sk-tab.is-active { color: var(--text); }
 .sk-tab-icon { position: relative; display: grid; place-items: center; }
 .sk-tab-dot {
   position: absolute; top: -2px; right: -4px;
@@ -567,7 +601,7 @@ export const panelCss = /* css */ `
   .sk-bubble { transition: opacity 140ms ease, transform 1ms linear; }
   .sk-panel { animation: sk-fade-in 160ms ease both; }
   .sk-panel[data-closing] { animation: sk-fade-out 120ms ease both; }
-  .sk-ball, .sk-tile, .sk-path.is-actionable { transition: none; }
+  .sk-ball, .sk-tile, .sk-path.is-actionable, .sk-tab-indicator { transition: none; }
   .sk-ball[data-scanning] .sk-ball-face { animation: none; opacity: 0.7; }
   .sk-ball[data-expanded] { transform: none; }
   .sk-clear.is-loading svg { animation: none; opacity: 0.7; }

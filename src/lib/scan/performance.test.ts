@@ -9,12 +9,67 @@ import {
   evaluateEarlyThirdPartyConnections,
   evaluatePreloadHints,
   evaluateMeasurementScope,
+  excludeOwnResources,
+  scoreSeverity,
+  classifyFormFactor,
   buildRecommendations,
   type RawCwv,
   type ResourceInfo,
   type RenderBlockerCandidate,
   type PreloadHint,
 } from './performance';
+
+describe('scoreSeverity', () => {
+  it('is critical below 90', () => {
+    expect(scoreSeverity(89)).toBe('critical');
+    expect(scoreSeverity(0)).toBe('critical');
+  });
+
+  it('is warning from 90 up to (not including) 95', () => {
+    expect(scoreSeverity(90)).toBe('warning');
+    expect(scoreSeverity(94)).toBe('warning');
+  });
+
+  it('is normal at 95 and above', () => {
+    expect(scoreSeverity(95)).toBe('normal');
+    expect(scoreSeverity(100)).toBe('normal');
+  });
+});
+
+describe('classifyFormFactor', () => {
+  it('trusts navigator.userAgentData.mobile over the viewport width when the browser exposes it', () => {
+    expect(classifyFormFactor(1440, true)).toBe('Mobile');
+    expect(classifyFormFactor(320, false)).toBe('Desktop');
+  });
+
+  it('falls back to a viewport-width heuristic when userAgentData is unavailable', () => {
+    expect(classifyFormFactor(390)).toBe('Mobile');
+    expect(classifyFormFactor(1280)).toBe('Desktop');
+  });
+});
+
+describe('excludeOwnResources', () => {
+  function resource(overrides: Partial<ResourceInfo> = {}): ResourceInfo {
+    return { name: 'https://example.com/scripts/scripts.js', initiatorType: 'script', transferSize: 1024, duration: 10, ...overrides };
+  }
+
+  it("drops Sanity's own bundled chunks — a real visitor never fetches them, so they must not count against the page's own budget", () => {
+    const resources = [
+      resource(),
+      resource({ name: 'https://example.com/tools/sanity/sanity-ui.js', transferSize: 290 * 1024 }),
+      resource({ name: 'https://example.com/tools/sanity/sanity-core.js', transferSize: 3 * 1024 }),
+    ];
+    const filtered = excludeOwnResources(resources, 'https://example.com/tools/sanity/');
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].name).toBe('https://example.com/scripts/scripts.js');
+  });
+
+  it('leaves page resources under an unrelated path untouched', () => {
+    const resources = [resource(), resource({ name: 'https://example.com/blocks/cards/cards.js' })];
+    const filtered = excludeOwnResources(resources, 'https://example.com/tools/sanity/');
+    expect(filtered).toHaveLength(2);
+  });
+});
 
 describe('evaluateCwv', () => {
   it('rates a fast LCP as normal and a slow one as critical', () => {
@@ -57,6 +112,31 @@ describe('evaluateRenderBlocking', () => {
     const blockers = evaluateRenderBlocking(candidates, resources);
     expect(blockers[0].blockingMs).toBe(340);
     expect(blockers[0].severity).toBe('critical');
+  });
+
+  it(
+    "drops a <head> stylesheet the DOM heuristic alone would flag, when the browser's own renderBlockingStatus says it never blocked " +
+      'anything — e.g. per-block CSS an EDS page appends to <head> long after first paint',
+    () => {
+      const candidates: RenderBlockerCandidate[] = [
+        { path: '/styles/styles.css', selector: 'link', tag: 'link' },
+        { path: '/blocks/cards/cards.css', selector: 'link', tag: 'link' },
+      ];
+      const resources: ResourceInfo[] = [
+        { name: '/styles/styles.css', initiatorType: 'link', transferSize: 2000, duration: 30, renderBlockingStatus: 'blocking' },
+        { name: '/blocks/cards/cards.css', initiatorType: 'link', transferSize: 500, duration: 20, renderBlockingStatus: 'non-blocking' },
+      ];
+      const blockers = evaluateRenderBlocking(candidates, resources);
+      expect(blockers).toHaveLength(1);
+      expect(blockers[0].path).toBe('/styles/styles.css');
+    },
+  );
+
+  it('falls back to the DOM-derived candidates untouched when no resource in this browser reports renderBlockingStatus', () => {
+    const candidates: RenderBlockerCandidate[] = [{ path: '/styles/styles.css', selector: 'link', tag: 'link' }];
+    const resources: ResourceInfo[] = [{ name: '/styles/styles.css', initiatorType: 'link', transferSize: 2000, duration: 30 }];
+    const blockers = evaluateRenderBlocking(candidates, resources);
+    expect(blockers).toHaveLength(1);
   });
 });
 
@@ -193,17 +273,29 @@ describe('evaluatePreloadHints', () => {
 
 describe('evaluateMeasurementScope', () => {
   it('notes (not warns) when on a recognized preview/live host', () => {
-    const findings = evaluateMeasurementScope({ matched: true, host: 'aem.page', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' });
+    const findings = evaluateMeasurementScope(
+      { matched: true, host: 'aem.page', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' },
+      'Desktop',
+    );
     expect(findings[0].severity).toBe('idle');
     expect(findings[0].title).toContain('aem.page');
   });
 
   it('applies the same caveat on .aem.live, since the docs group it with .aem.page as non-production', () => {
-    const findings = evaluateMeasurementScope({ matched: true, host: 'aem.live', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' });
+    const findings = evaluateMeasurementScope(
+      { matched: true, host: 'aem.live', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' },
+      'Desktop',
+    );
     expect(findings[0].title).toContain('aem.live');
   });
 
+  it('names the actual device this reading came from, so it reads as one session rather than a mobile+desktop pair', () => {
+    const ref = { matched: true, host: 'aem.page', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' } as const;
+    expect(evaluateMeasurementScope(ref, 'Desktop')[0].detail).toContain('desktop browser');
+    expect(evaluateMeasurementScope(ref, 'Mobile')[0].detail).toContain('mobile browser');
+  });
+
   it('produces no finding on an unrecognized (likely custom production) domain', () => {
-    expect(evaluateMeasurementScope({ matched: false })).toHaveLength(0);
+    expect(evaluateMeasurementScope({ matched: false }, 'Desktop')).toHaveLength(0);
   });
 });

@@ -143,8 +143,12 @@ export function SanityLauncher({
     if (!d.active) return;
     d.active = false;
 
+    // A tap on the ball is a shortcut straight into the panel, not a toggle
+    // for the fan — hover still previews per-section severity on desktop;
+    // clicking always commits to reading the summary rather than requiring
+    // a second tap on top of an already-open cluster.
     if (!d.moved) {
-      onExpandedChange(!expanded);
+      onSelect('summary');
       return;
     }
 

@@ -3,14 +3,18 @@
 // dictionary — real, but documented as limited so it never claims more
 // coverage than it has).
 //
-// Alt text and heading order/presence are deliberately NOT checked here —
-// axe-core (Accessibility section) already runs image-alt, heading-order,
-// and page-has-heading-one as part of its default ruleset, more rigorously
-// than a hand-rolled check could (it accounts for role="presentation",
-// aria-label alternatives, etc.). Duplicating that here produced two
-// findings for the same underlying problem. `headings` is still gathered
-// (for the one heading check axe doesn't cover — multiple H1s, evaluated in
-// accessibility.ts) but evaluateSeo itself no longer reports on it.
+// Alt text and heading order/presence are deliberately NOT double-reported
+// as Findings here — axe-core (Accessibility section) already runs
+// image-alt, heading-order, and page-has-heading-one as part of its default
+// ruleset, more rigorously than a hand-rolled check could (it accounts for
+// role="presentation", aria-label alternatives, etc.). Duplicating that as
+// a second Finding produced two findings for the same underlying problem.
+// `headings` and `imagesMissingAlt` are still gathered and shown as plain
+// overview lists in the Structure tab (headings for the one gap axe leaves
+// — multiple H1s, evaluated in accessibility.ts; images so the specific
+// offending images are visible while looking at the page's structure) —
+// visual aids pointing at what's already been judged elsewhere, not a
+// second verdict.
 import type { Finding, SeoPageInfo } from '../../data/types';
 import { buildSelector } from '../selector';
 
@@ -23,6 +27,19 @@ export interface HeadingInfo {
 export interface TextNodeInfo {
   text: string;
   selector: string;
+}
+
+export interface RawImageInfo {
+  hasAlt: boolean;
+  role: string | null;
+  ariaHidden: string | null;
+  selector: string;
+  src: string;
+}
+
+export interface MissingAltImage {
+  selector: string;
+  src: string;
 }
 
 export interface SeoRawData {
@@ -39,6 +56,48 @@ export interface SeoRawData {
   imageCount: number;
   headings: HeadingInfo[];
   textNodes: TextNodeInfo[];
+  fontsUsed: string[];
+  imagesMissingAlt: MissingAltImage[];
+}
+
+/**
+ * Font families actually loaded for this render, via the CSS Font Loading
+ * API — reflects what's really on the page (including web fonts pulled in
+ * by an EDS block's own CSS), not just what a stylesheet declares. Returns
+ * [] in environments without the API (e.g. jsdom in tests).
+ */
+function gatherFonts(doc: Document = document): string[] {
+  if (!doc.fonts || typeof doc.fonts.forEach !== 'function') return [];
+  const families = new Set<string>();
+  doc.fonts.forEach((face) => {
+    if (face.status === 'loaded') families.add(face.family.replace(/^["']|["']$/g, ''));
+  });
+  return Array.from(families).sort();
+}
+
+function collectImages(doc: Document): RawImageInfo[] {
+  return Array.from(doc.querySelectorAll('img'))
+    .filter((img) => !img.closest('#sanity-panel-host') && !img.closest('aem-sidekick'))
+    .map((img) => ({
+      hasAlt: img.hasAttribute('alt'),
+      role: img.getAttribute('role'),
+      ariaHidden: img.getAttribute('aria-hidden'),
+      selector: buildSelector(img),
+      src: img.currentSrc || img.src,
+    }));
+}
+
+/**
+ * Images with no alt attribute at all, excluding ones explicitly marked
+ * decorative (role="presentation"/"none", or aria-hidden="true") — those
+ * are intentionally outside the accessibility tree, so a missing alt on
+ * them isn't the same authoring gap axe-core's image-alt rule is built to
+ * catch (and doesn't flag them either, for the same reason).
+ */
+export function selectImagesMissingAlt(images: RawImageInfo[]): MissingAltImage[] {
+  return images
+    .filter((img) => !img.hasAlt && img.role !== 'presentation' && img.role !== 'none' && img.ariaHidden !== 'true')
+    .map((img) => ({ selector: img.selector, src: img.src }));
 }
 
 function collectTextNodes(doc: Document): TextNodeInfo[] {
@@ -82,6 +141,8 @@ export function gatherSeo(doc: Document = document, win: Window = window): SeoRa
       selector: buildSelector(el),
     })),
     textNodes: collectTextNodes(doc),
+    fontsUsed: gatherFonts(doc),
+    imagesMissingAlt: selectImagesMissingAlt(collectImages(doc)),
   };
 }
 
@@ -107,6 +168,8 @@ export function buildSeoPageInfo(raw: SeoRawData): SeoPageInfo {
     headingCounts,
     headings: raw.headings,
     imageCount: raw.imageCount,
+    fontsUsed: raw.fontsUsed,
+    imagesMissingAlt: raw.imagesMissingAlt,
   };
 }
 

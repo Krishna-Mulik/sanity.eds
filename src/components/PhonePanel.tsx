@@ -84,7 +84,15 @@ export function PhonePanel({ side, ballTop, active, closing, onSelectSection, on
         </div>
       </div>
 
-      <nav class="sk-tabbar" aria-label="Sections">
+      <nav
+        class="sk-tabbar"
+        aria-label="Sections"
+        style={{
+          '--tab-count': sectionDefs.length,
+          '--active-index': Math.max(sectionDefs.findIndex((s) => s.id === active), 0),
+        } as Record<string, number>}
+      >
+        <span class="sk-tab-indicator" aria-hidden="true" />
         {sectionDefs.map((s) => (
           <button
             key={s.id}
