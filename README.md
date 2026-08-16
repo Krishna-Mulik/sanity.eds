@@ -6,6 +6,10 @@ An AEM Sidekick plugin for Edge Delivery Services (EDS) sites: a self-contained 
 live EDS page for performance, SEO, social/OG, security, accessibility, and aem.live-limits
 issues, and lets an author or developer jump straight to the offending element on the page.
 
+```bash
+npm i sanity.eds -D
+```
+
 ## 1. Problem
 
 EDS enforces hard [content/code-bus limits](https://www.aem.live/docs/limits) — asset size caps
@@ -65,7 +69,7 @@ visitor who never opens Sidekick fetches zero Sanity-related bytes and never see
 ball. It mounts into its own Shadow DOM once loaded, so nothing about the host page's styles can
 leak in and nothing Sanity does can leak out.
 
-### Install
+### 1. Install
 
 ```bash
 npm i sanity.eds -D
@@ -73,9 +77,11 @@ npm i sanity.eds -D
 
 This drops the built files into **`tools/sanity/`** in your own repo automatically via a
 postinstall step — EDS serves pages from your site's own git repo, not from `node_modules`, so
-the files have to live there to be loadable at all.
+the files have to live there to be loadable at all. Commit `tools/sanity/`.
 
-Wire it into `scripts.js` the same way [aem.live's sidekick-development
+### 2. Wire it into `scripts.js`
+
+The same way [aem.live's sidekick-development
 docs](https://www.aem.live/developer/sidekick-development) show for any event-type plugin:
 
 ```js
@@ -94,13 +100,45 @@ function initSanity() {
 initSanity();
 ```
 
-Commit `tools/sanity/` — that's the only manual step in the whole flow. Updating later is just:
+### 3. Register the Sidekick plugin
+
+Without this, no "Sanity" button ever appears in Sidekick, so step 2 never fires. This is pushed
+through the Admin API, not committed as a file in your repo:
+
+1. Go to [tools.aem.live/tools/admin-edit](https://tools.aem.live/tools/admin-edit/index.html).
+2. In the URL field, paste your site's config endpoint:
+   `https://admin.hlx.page/config/<org>/sites/<site>/sidekick.json`
+   (substitute your own GitHub org and site name — e.g. `krishna-mulik`/`sanity`).
+3. Set the **Body** to:
+   ```json
+   {
+     "project": "Sanity",
+     "plugins": [
+       {
+         "id": "sanity",
+         "title": "Sanity",
+         "event": "sanity",
+         "environments": ["any"]
+       }
+     ]
+   }
+   ```
+4. Set **Method** to `POST` and click **Save**.
+
+`"environments": ["any"]` is a documented valid value; Sidekick itself already restricts
+event-type plugins to dev/preview/live/prod regardless, so nothing further to configure there.
+
+### 4. Content-Security-Policy (only if you run one)
+
+Add `style-src 'unsafe-inline'` (or a matching nonce) and `font-src data:` — the panel injects a
+runtime `<style>` tag and base64-embedded fonts. No `script-src` addition needed; everything
+loads same-origin from `tools/sanity/`.
+
+### Updating later
 
 ```bash
 npm update sanity.eds
 ```
 
-...which re-copies the newest build automatically.
-
-**Full setup guide (including the Sidekick plugin manifest, CDN/vendoring alternatives, and
-Content-Security-Policy requirements): see [SETUP.md](SETUP.md).**
+Re-runs the postinstall step and re-copies the newest build into `tools/sanity/` automatically —
+commit the resulting diff, nothing else to do.

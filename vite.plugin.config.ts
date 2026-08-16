@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 
 // Builds the distributable a target EDS site's own scripts.js loads (see
-// SETUP.md). Distinct from the default vite.config.ts, which builds
+// README.md). Distinct from the default vite.config.ts, which builds
 // index.html — the local Cairn Supply Co. dev harness — not the plugin.
 //
 // Two output files, not one, on purpose: src/plugin-entry.ts installs

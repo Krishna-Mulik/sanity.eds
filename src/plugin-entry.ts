@@ -1,4 +1,4 @@
-// Distributable entry point (see vite.plugin.config.ts / SETUP.md).
+// Distributable entry point (see vite.plugin.config.ts / README.md).
 //
 // Deliberately does NOT import src/main.tsx, which also imports
 // src/index.css — that stylesheet is the mock Cairn Supply Co. dev harness

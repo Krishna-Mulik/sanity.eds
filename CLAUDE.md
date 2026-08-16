@@ -65,7 +65,7 @@ The distributable (`src/plugin-entry.ts`, built by `vite.plugin.config.ts` into 
 is deliberately split into two chunks, not one eagerly-mounted bundle — `sanity.js` +
 `sanity-core.js` (~2.4KB, `installRuntimeErrorCapture()`, zero Preact/axe-core dependency) vs.
 `sanity-ui.js` (~290KB gzip, the actual panel: Preact + axe-core + every scan module). But per
-SETUP.md's documented consumer wiring, **nothing imports the entry point at all until a Sidekick
+README.md's documented consumer wiring, **nothing imports the entry point at all until a Sidekick
 user actually clicks the Sanity button** — the only `import('/tools/sanity/index.js')` a
 consumer's `scripts.js` ever does lives inside the `custom:sanity` event handler. This is
 intentional: Sanity is a developer/author tool, so a regular site visitor should fetch *zero*
