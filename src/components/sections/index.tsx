@@ -169,7 +169,7 @@ export function PerformanceSection({ onLocate }: SectionProps) {
 
 /* ---------------- SEO ---------------- */
 
-const SEO_TABS = ['Findings', 'Metadata', 'Structure', 'Links', 'Preview vs Live'] as const;
+const SEO_TABS = ['Findings', 'Metadata', 'Structure', 'Links'] as const;
 type SeoTab = (typeof SEO_TABS)[number];
 
 /**
@@ -263,7 +263,7 @@ export function SeoSection({ onLocate }: SectionProps) {
   const [tab, setTab] = useState<SeoTab>('Findings');
   if (!result) return <Loading label="Checking SEO signals…" />;
 
-  const { seoFindings, seoPageInfo, linkStats, linkFindings, consistencyFindings } = result;
+  const { seoFindings, seoPageInfo, linkStats, linkFindings } = result;
   const origin = window.location.origin;
 
   const infoRows: { label: string; value: string }[] = [
@@ -389,16 +389,6 @@ export function SeoSection({ onLocate }: SectionProps) {
             </Block>
           )}
         </>
-      )}
-
-      {tab === 'Preview vs Live' && (
-        <Block title="Preview vs live" meta={<SeverityCounts findings={consistencyFindings} />}>
-          <div class="sk-findings">
-            {consistencyFindings.map((f) => (
-              <FindingRow finding={f} onLocate={onLocate} key={f.id} />
-            ))}
-          </div>
-        </Block>
       )}
     </>
   );

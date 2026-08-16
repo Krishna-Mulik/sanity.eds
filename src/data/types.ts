@@ -129,7 +129,6 @@ export interface ScanResult {
   siteLimitFindings: Finding[];
   jsonSheetMetrics: Metric[];
   blockFindings: Finding[];
-  consistencyFindings: Finding[];
   accessibilityFindings: Finding[];
   siteInfo: SiteIdentity | null;
   sectionSeverity: Record<CheckedSectionId, Severity>;

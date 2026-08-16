@@ -12,7 +12,6 @@ import {
   evaluateJsonSheetMetrics,
 } from './siteLimits';
 import { gatherBlockStructure, gatherEdsRuntimeDetected, evaluateBlockStructure } from './blockStructure';
-import { gatherConsistency, evaluateConsistency } from './consistency';
 import { gatherSecurity, evaluateSecurity } from './security';
 import { gatherSeo, evaluateSeo, buildSeoPageInfo, checkCanonicalStatus, evaluateCanonicalStatus } from './seo';
 import { gatherFaviconLink, checkFavicon, evaluateFavicon } from './favicon';
@@ -79,7 +78,6 @@ export async function runScan(): Promise<ScanResult> {
     robotsInfo,
     notFoundInfo,
     canonicalCheck,
-    consistencyRaw,
   ] = await Promise.all([
     gatherLimits(document, window, linkInfos),
     gatherSecurity(),
@@ -96,7 +94,6 @@ export async function runScan(): Promise<ScanResult> {
     gatherRobots(),
     gatherNotFoundCheck(),
     checkCanonicalStatus(seoRaw),
-    gatherConsistency(refInfo),
   ]);
 
   const pageOrigin = window.location.origin;
@@ -137,7 +134,6 @@ export async function runScan(): Promise<ScanResult> {
   const siteLimitFindings = evaluateSiteLimits(refInfo, sitemapInfo, redirectsInfo, jsonSheets, robotsInfo, notFoundInfo);
   const jsonSheetMetrics = evaluateJsonSheetMetrics(jsonSheets);
   const blockFindings = evaluateBlockStructure(blocks, edsRuntimeDetected);
-  const consistencyFindings = evaluateConsistency(consistencyRaw);
   const accessibilityFindings = [
     ...evaluateAccessibility(a11yViolations),
     ...evaluateHeadingStructure(seoRaw.headings),
@@ -149,7 +145,7 @@ export async function runScan(): Promise<ScanResult> {
 
   const sectionSeverity: Record<CheckedSectionId, Severity> = {
     performance: worstSeverity([...cwv.map((m) => m.severity), ...renderBlockers.map((b) => b.severity), ...performanceFindings.map((f) => f.severity)]),
-    seo: worstSeverity([...seoFindings, ...consistencyFindings].map((f) => f.severity)),
+    seo: worstSeverity(seoFindings.map((f) => f.severity)),
     social: worstSeverity(socialFindings.map((f) => f.severity)),
     security: worstSeverity(securityFindings.map((f) => f.severity)),
     technical: worstSeverity([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
@@ -158,7 +154,7 @@ export async function runScan(): Promise<ScanResult> {
 
   const sectionBreakdown: Record<CheckedSectionId, { critical: number; warning: number }> = {
     performance: tally([...cwv.map((m) => m.severity), ...renderBlockers.map((b) => b.severity), ...performanceFindings.map((f) => f.severity)]),
-    seo: tally([...seoFindings, ...consistencyFindings].map((f) => f.severity)),
+    seo: tally(seoFindings.map((f) => f.severity)),
     social: tally(socialFindings.map((f) => f.severity)),
     security: tally(securityFindings.map((f) => f.severity)),
     technical: tally([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
@@ -167,7 +163,7 @@ export async function runScan(): Promise<ScanResult> {
 
   const sectionIssueCount: Record<CheckedSectionId, number> = {
     performance: cwv.filter((m) => m.severity === 'critical' || m.severity === 'warning').length + renderBlockers.filter((b) => b.severity !== 'normal').length + performanceFindings.length,
-    seo: [...seoFindings, ...consistencyFindings].filter((f) => f.severity === 'critical' || f.severity === 'warning').length,
+    seo: seoFindings.filter((f) => f.severity === 'critical' || f.severity === 'warning').length,
     social: socialFindings.filter((f) => f.severity !== 'normal').length,
     security: securityFindings.length,
     technical:
@@ -198,7 +194,6 @@ export async function runScan(): Promise<ScanResult> {
     siteLimitFindings,
     jsonSheetMetrics,
     blockFindings,
-    consistencyFindings,
     accessibilityFindings,
     sectionSeverity,
     sectionBreakdown,

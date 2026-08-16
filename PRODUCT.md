@@ -31,7 +31,7 @@ Used inside the AEM Sidekick Chrome extension while working an EDS site across d
 
 - **Summary** — overall critical/warning count plus a row per section.
 - **Speed** — score, Core Web Vitals against their thresholds, render-blocking resources, ranked recommendations, plus EDS-specific "Keeping it 100" checks (LCP payload budget, early third-party connections, preload/fetchpriority anti-patterns).
-- **SEO** — tabbed: Findings (canonical, title/description, spelling, structured data, favicon), Metadata, Structure, Links, and Preview vs Live (content diff against this page's counterpart on the other EDS environment — `.aem.page` ⟷ `.aem.live`).
+- **SEO** — tabbed: Findings (canonical, title/description, spelling, structured data, favicon), Metadata, Structure, Links.
 - **Social** — a meta-tag inspector (every Open Graph/Twitter Card tag checked individually, including og:image's real dimensions and aspect ratio), plus a platform-accurate preview per platform (Facebook, X, LinkedIn, WhatsApp, Discord) showing how the page will actually render when shared. Its own top-level section, not nested under SEO.
 - **Security** — CSP, mixed content, framing and referrer headers, analytics/martech detection.
 - **Technical** — tabbed: Limits (aem.live limits compliance, reported as measured value against the allowed cap) and Block Structure (EDS `data-block-status` health — the one check no generic tool can do, since none of them have a concept of an EDS "block"). Named "Technical," not "Limits," because Block Structure isn't a cap-compliance check — it's "does the EDS pipeline actually work," a different kind of question that happened to get bundled into the same section early on.

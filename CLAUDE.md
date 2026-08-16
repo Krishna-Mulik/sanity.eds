@@ -147,32 +147,27 @@ exponential-decelerate easing; bounce/elastic easing is intentionally avoided ev
 
 Scanning is real. `src/lib/scan/` has one module per check domain (`limits.ts`, `siteLimits.ts`,
 `security.ts`, `seo.ts`, `structuredData.ts`, `social.ts`, `links.ts`, `favicon.ts`,
-`performance.ts`, `runtimeErrors.ts`, `accessibility.ts`, `blockStructure.ts`, `consistency.ts`),
-each following the `gatherX()` (impure) / `evaluateX()` (pure, tested) split described under
-Commands above.
+`performance.ts`, `runtimeErrors.ts`, `accessibility.ts`, `blockStructure.ts`), each following
+the `gatherX()` (impure) / `evaluateX()` (pure, tested) split described under Commands above.
 
-`consistency.ts` is Preview vs Live content consistency — compares this page against its
-counterpart on the other EDS environment (`.aem.page` ⟷ `.aem.live`, or legacy `.hlx.page` ⟷
-`.hlx.live`) by deriving the counterpart URL from `siteLimits.ts`'s already-parsed
-`ref--repo--owner` host info, fetching the same path there, and diffing title/meta-description/
-visible-text blocks (block-level elements — `p`/`li`/headings/etc. — not raw text nodes, so the
-diff is paragraph-granularity, not noisy word-by-word). The two hosts are different origins even
-though they share the same ref/repo/owner, so the fetch is attempted, never assumed to succeed —
-a CORS-blocked or failed request gets an honest `idle` "couldn't compare" note (same pattern as
-every other cross-origin limitation: og:image, JSON sheets, canonical, manifest), and a missing
-counterpart page (404) is reported directionally: preview content not yet published to live is
-`idle` (the normal, expected state for work in progress), while a live page that's vanished from
-preview is `warning` (unusual, worth a look). A content/title/description mismatch when both
-sides *do* load is always `idle`, not a failure — differing content is expected mid-edit, same
-reasoning as `seo.ts`'s canonical-mismatch check — the value is surfacing exactly what differs
-(up to 5 example blocks per side, with a "more differences than shown" note past that), not
-penalizing a normal authoring state. Findings feed into the SEO section's "Preview vs Live" tab —
-placed there (not Technical) because the comparison is entirely about content (title, description,
-body text), the same domain SEO's other tabs already own, whereas Technical is scoped to
-"does the EDS pipeline/delivery configuration work," a different kind of question. This was
-originally scoped out ("needs multi-environment access") before being revisited — the
-fetch-with-honest-fallback pattern established by every other cross-origin check made it
-tractable after all.
+**Preview vs Live content comparison was tried and removed.** A `consistency.ts` module (and a
+"Preview vs Live" tab in the SEO section) once fetched this page's counterpart on the other EDS
+environment (`.aem.page` ⟷ `.aem.live`) and diffed title/description/visible-text blocks,
+following the same fetch-with-honest-fallback pattern as every other cross-origin check (og:image,
+JSON sheets, canonical, favicon). In practice it almost never worked: `.aem.live`/`.aem.page`
+send no `Access-Control-Allow-Origin` header by default, so the cross-origin `fetch()` fails for
+essentially every real site out of the box — confirmed against a real deployed site, not just
+reasoned about (`curl`/server-side HTTP has no such restriction and diffed the two pages fine,
+including a genuine `<h1>`→`<h2>` drift on that page; the point was specifically that Sanity's
+own `fetch()`, running as embedded page JS in a visitor's real browser, cannot do the same thing
+— CORS restricts *script-initiated* cross-origin reads, not requests in general). Fixing it is
+possible but requires the *site owner* to add a `headers.json` CORS rule
+([aem.live/docs/custom-headers](https://www.aem.live/docs/custom-headers)) — not something Sanity
+controls, and not something most sites will ever configure. Rather than ship a check that reads
+"Not checked" for nearly everyone, it was removed entirely instead of left as permanent
+near-dead weight. If revisited, the real fix is architectural (a small proxy service Sanity's
+authors host, since server-to-server HTTP has no CORS restriction), not a client-side workaround
+— there isn't one.
 `favicon.ts` checks the `<link rel="icon">` in `<head>` actually resolves, not just that the tag
 exists — folded into SEO findings (not Security/Technical) since that's where an author looks for
 `<head>` link checks alongside canonical/viewport. It's probed with an `Image()` load (same
