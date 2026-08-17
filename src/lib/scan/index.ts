@@ -110,7 +110,7 @@ export async function runScan(): Promise<ScanResult> {
   const performanceScore = computeScore(cwv);
   const runtimeErrorFindings = evaluateRuntimeErrors(getRuntimeErrors());
   const recommendations = buildRecommendations({ cwv, renderBlockers, largeBundles: largeBundleFindings, duplicates: duplicateFindings });
-  const lcpPayloadFindings = evaluateLcpPayloadBudget(cwvRaw.lcp, resources);
+  const lcpPayloadFindings = evaluateLcpPayloadBudget(cwvRaw.lcp, resources, pageOrigin);
   const earlyThirdPartyFindings = evaluateEarlyThirdPartyConnections(cwvRaw.lcp, resources, pageOrigin);
   const preloadFindings = evaluatePreloadHints(preloadHints, pageOrigin);
   const measurementScopeFindings = evaluateMeasurementScope(refInfo, formFactor);

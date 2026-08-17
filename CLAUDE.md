@@ -168,13 +168,19 @@ reads "Not checked" for nearly everyone, or stand up a proxy service (the only r
 fix, and a materially bigger project than "a client-side script with zero infrastructure"),
 `consistency.ts` now does neither: `computeConsistencyUrls()` is a pure hostname swap (no fetch,
 so no CORS to hit) producing this page's URL and its counterpart's, and the "Preview vs Live" tab
-just hands the author both as one-click-copy rows plus a link to
-[Thruuu's free page comparison tool](https://thruuu.com/free-seo-tools/page-comparison-tool) — a
-real third-party tool that does the actual diffing server-side, where CORS doesn't apply. Neither
-Thruuu nor DiffNow (also evaluated) supports pre-filling their compare form via URL — confirmed by
-testing both directly: submitting doesn't produce a shareable/query-string URL, and pre-loading
-with guessed param names doesn't populate their fields either — so this is deliberately copy-paste
-rather than a fake "one-click" promise the tools don't actually support.
+just hands the author both as one-click-copy rows plus a link to a separate comparison tool
+([content-compare](https://imswapnilgaikwad.github.io/content-compare/), current choice, per
+product decision) to paste them into. None of the three tools evaluated (that one, Thruuu, DiffNow)
+support pre-filling their compare form via URL — confirmed by testing all three directly:
+submitting doesn't produce a shareable/query-string URL, and pre-loading with guessed param names
+doesn't populate their fields either — so this is deliberately copy-paste, not a fake "one-click"
+promise the tools don't actually support. Worth flagging plainly: content-compare was also verified
+to issue **zero network requests** to either input URL on submit (checked against two different
+URL pairs, including two totally unrelated real sites), while still confidently rendering a parity
+score — its output isn't derived from either page's real content, unlike Thruuu/DiffNow (both
+confirmed to do a genuine server-side fetch — Thruuu independently caught the same real `<h1>`→`<h2>`
+drift a direct `curl` diff found). Linked anyway per product decision; if revisited, Thruuu is the
+one of the three that's actually verified to work.
 `favicon.ts` checks the `<link rel="icon">` in `<head>` actually resolves, not just that the tag
 exists — folded into SEO findings (not Security/Technical) since that's where an author looks for
 `<head>` link checks alongside canonical/viewport. It's probed with an `Image()` load (same

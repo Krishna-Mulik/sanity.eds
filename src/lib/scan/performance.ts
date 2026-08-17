@@ -279,36 +279,35 @@ export function evaluateDuplicateRequests(resources: ResourceInfo[], pageOrigin 
 
 const LCP_PAYLOAD_BUDGET = 100 * 1024;
 
+const TOP_CONTRIBUTORS_SHOWN = 3;
+
 /**
  * aem.live's "Keeping it 100" guidance: keep total network payload before
- * the LCP candidate renders under ~100KB to reliably land LCP under
- * ~1.5s on mobile. This is EDS-specific numeric guidance a generic
- * Lighthouse score doesn't expose directly (Lighthouse reports LCP
- * timing, not a byte budget leading up to it) — there's no equivalent
- * named audit in PageSpeed Insights to cross-check this against.
- *
- * This is measured on whatever network the current browser session
- * actually has — a fast office wifi/broadband connection loads far more
- * "before LCP" than the same page would under the throttled slow-4G
- * mobile conditions the 100KB figure assumes, simply because nothing has
- * to wait its turn. A critical finding here on a fast connection is real
- * signal (that payload exists and will cost mobile users something), but
- * the byte total isn't directly comparable to a lab tool run under
- * controlled throttling — the detail text says so explicitly rather than
- * implying this number would reproduce on PageSpeed Insights.
+ * the LCP candidate renders under ~100KB. Names the actual biggest
+ * contributors rather than just stating the total — a raw byte count with
+ * no breakdown gives the author nothing to act on. Measured on whatever
+ * network this browser session actually has, not a throttled mobile
+ * simulation, so the detail says so briefly rather than implying this
+ * number would reproduce on PageSpeed Insights.
  */
-export function evaluateLcpPayloadBudget(lcp: number | null, resources: ResourceInfo[]): Finding[] {
+export function evaluateLcpPayloadBudget(lcp: number | null, resources: ResourceInfo[], pageOrigin = ''): Finding[] {
   if (lcp == null) return [];
   const beforeLcp = resources.filter((r) => r.responseEnd != null && r.responseEnd > 0 && r.responseEnd <= lcp);
   if (!beforeLcp.length) return [];
   const totalBytes = beforeLcp.reduce((sum, r) => sum + r.transferSize, 0);
   if (totalBytes <= LCP_PAYLOAD_BUDGET) return [];
+
+  const topContributors = [...beforeLcp]
+    .sort((a, b) => b.transferSize - a.transferSize)
+    .slice(0, TOP_CONTRIBUTORS_SHOWN)
+    .map((r) => `${relativizeUrl(r.name, pageOrigin)} (${formatBytes(r.transferSize)})`)
+    .join(', ');
+
   return [
     {
       id: 'perf-lcp-payload-budget',
       title: 'Payload before LCP exceeds the ~100KB budget',
-      detail:
-        'aem.live\'s "Keeping it 100" guidance targets under 100KB of total network payload before the LCP candidate renders, to reliably land LCP under ~1.5s on mobile. Measured on this browser\'s current network conditions, not a throttled mobile simulation — a fast connection can show more payload landing "before LCP" than a real mobile visitor would experience it. Compare against PageSpeed Insights (Mobile) for a throttled baseline.',
+      detail: `Biggest contributors: ${topContributors}. Measured on this session's real network, not a throttled mobile simulation — compare against PageSpeed Insights (Mobile) for a stricter baseline.`,
       severity: totalBytes > LCP_PAYLOAD_BUDGET * 2 ? 'critical' : 'warning',
       measured: formatBytes(totalBytes),
       allowed: formatBytes(LCP_PAYLOAD_BUDGET),
@@ -396,10 +395,12 @@ export function evaluatePreloadHints(hints: PreloadHint[], pageOrigin = ''): Fin
 /**
  * aem.live/docs/testing treats .aem.page and .aem.live as "preview/delivery
  * tiers," not the production CDN a real visitor hits, and treats field RUM
- * data from actual production traffic as the authoritative performance
- * source — not a single-session in-browser measurement like the CWV grid
- * above. That caveat previously only existed as a code comment; this
- * surfaces it to whoever is actually reading the panel.
+ * data as the authoritative performance source, not a single-session
+ * in-browser reading like the CWV grid above — and that reading is one
+ * device (formFactor), not a mobile+desktop pair. Always idle/informational
+ * (not a pass/fail check — there's nothing to verify, just scope to
+ * disclose), so the detail stays to one short sentence rather than
+ * re-explaining the whole testing-methodology doc inline.
  */
 export function evaluateMeasurementScope(ref: GithubRefInfo, formFactor: FormFactor): Finding[] {
   if (!ref.matched || !ref.host) return [];
@@ -407,7 +408,7 @@ export function evaluateMeasurementScope(ref: GithubRefInfo, formFactor: FormFac
     {
       id: 'perf-measurement-scope',
       title: `Measured on ${ref.host}, not the production CDN`,
-      detail: `aem.live's testing guidance treats .aem.page and .aem.live as preview/delivery tiers, not the production CDN a real visitor hits — and treats field RUM data from actual production traffic as the authoritative performance source, not a single-session in-browser measurement like this one. It's also one device: this reading came from a ${formFactor.toLowerCase()} browser, not a mobile+desktop pair — check PageSpeed Insights' own Mobile link if you're on desktop, since that's usually the stricter target.`,
+      detail: `One ${formFactor.toLowerCase()} session on ${ref.host}, not production traffic or a mobile+desktop pair — a spot-check, not a lab report.`,
       severity: 'idle',
     },
   ];

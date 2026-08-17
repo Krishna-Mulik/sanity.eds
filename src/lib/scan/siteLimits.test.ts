@@ -140,6 +140,35 @@ describe('evaluateSiteLimits — always-present not-checkable notes', () => {
     expect(findings.find((f) => f.id === 'site-byom-not-checkable')?.severity).toBe('idle');
   });
 
+  it('surfaces the actual documented limit numbers, not just "not checkable", for Code Sync and the Admin API', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    expect(findings.find((f) => f.id === 'site-code-sync-not-checkable')?.allowed).toBe('500 files, 10MB/file per ref, 100 active refs');
+    expect(findings.find((f) => f.id === 'site-admin-api-not-checkable')?.allowed).toBe('10 requests/second per project, 500 pending bulk-API jobs');
+  });
+
+  it('links to the real GitHub repo as a copyable way to check Code Sync usage, when the ref/repo/owner are known', () => {
+    const findings = evaluateSiteLimits(ref({ owner: 'cairn-supply', repo: 'cairn-site', ref: 'main' }), sitemap(), redirects());
+    const finding = findings.find((f) => f.id === 'site-code-sync-not-checkable');
+    expect(finding?.path).toBe('https://github.com/cairn-supply/cairn-site/tree/main');
+    expect(finding?.copyable).toBe(true);
+  });
+
+  it('has no repo link for Code Sync when the ref/repo/owner cannot be derived (e.g. a custom production domain)', () => {
+    const findings = evaluateSiteLimits(ref({ matched: false, owner: undefined, repo: undefined, ref: undefined }), sitemap(), redirects());
+    const finding = findings.find((f) => f.id === 'site-code-sync-not-checkable');
+    expect(finding?.path).toBeUndefined();
+    expect(finding?.copyable).toBeUndefined();
+  });
+
+  it('gives the Admin API note a concrete way to check (watch for 429s) instead of implying nothing can be known', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    expect(findings.find((f) => f.id === 'site-admin-api-not-checkable')?.detail).toContain('429');
+  });
+
+  it('points the BYOM note at fstab.yaml as the concrete place to check', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    expect(findings.find((f) => f.id === 'site-byom-not-checkable')?.detail).toContain('fstab.yaml');
+  });
 });
 
 describe('evaluateJsonSheetMetrics', () => {

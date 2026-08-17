@@ -67,7 +67,7 @@ docs.
 Sanity ships as a tiny entry point plus a UI chunk, and — because it's a developer/author tool,
 not something a regular visitor should pay for — **none of it loads at all until a Sidekick user
 actually clicks the Sanity button.** There's no top-level import anywhere in a consumer's
-`scripts/scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only
+`/scripts/scripts.js`; the only `import()` lives inside the `custom:sanity` event handler. Only
 at that point does the entry point run (installing error capture, ~2.4KB) and immediately trigger a
 second, separate fetch for the actual panel UI (Preact + axe-core, ~290KB gzip). A regular site
 visitor who never opens Sidekick fetches zero Sanity-related bytes and never sees the floating

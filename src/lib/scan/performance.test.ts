@@ -208,6 +208,31 @@ describe('evaluateLcpPayloadBudget', () => {
     expect(findings.find((f) => f.id === 'perf-lcp-payload-budget')?.severity).toBe('warning');
   });
 
+  it('names the biggest contributing resources, largest first, so there is something concrete to act on', () => {
+    const resources: ResourceInfo[] = [
+      { name: 'https://example.com/hero.jpg', initiatorType: 'img', transferSize: 180 * 1024, duration: 10, responseEnd: 500 },
+      { name: 'https://example.com/small.js', initiatorType: 'script', transferSize: 5 * 1024, duration: 10, responseEnd: 500 },
+      { name: 'https://example.com/font.woff2', initiatorType: 'font', transferSize: 65 * 1024, duration: 10, responseEnd: 500 },
+    ];
+    const findings = evaluateLcpPayloadBudget(1200, resources, 'https://example.com');
+    const detail = findings.find((f) => f.id === 'perf-lcp-payload-budget')?.detail ?? '';
+    expect(detail).toContain('/hero.jpg (180 KB)');
+    expect(detail).toContain('/font.woff2 (65 KB)');
+    expect(detail.indexOf('hero.jpg')).toBeLessThan(detail.indexOf('font.woff2'));
+  });
+
+  it('caps the named contributors at 3, even when more resources exceed the budget', () => {
+    const resources: ResourceInfo[] = [1, 2, 3, 4, 5].map((n) => ({
+      name: `https://example.com/asset${n}.js`,
+      initiatorType: 'script',
+      transferSize: 30 * 1024,
+      duration: 10,
+      responseEnd: 500,
+    }));
+    const detail = evaluateLcpPayloadBudget(1200, resources, 'https://example.com')[0]?.detail ?? '';
+    expect(detail.match(/asset\d\.js/g)).toHaveLength(3);
+  });
+
   it('does not flag payload under the budget', () => {
     const resources: ResourceInfo[] = [{ name: '/a.js', initiatorType: 'script', transferSize: 20 * 1024, duration: 10, responseEnd: 500 }];
     expect(evaluateLcpPayloadBudget(1200, resources)).toHaveLength(0);
@@ -291,8 +316,13 @@ describe('evaluateMeasurementScope', () => {
 
   it('names the actual device this reading came from, so it reads as one session rather than a mobile+desktop pair', () => {
     const ref = { matched: true, host: 'aem.page', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' } as const;
-    expect(evaluateMeasurementScope(ref, 'Desktop')[0].detail).toContain('desktop browser');
-    expect(evaluateMeasurementScope(ref, 'Mobile')[0].detail).toContain('mobile browser');
+    expect(evaluateMeasurementScope(ref, 'Desktop')[0].detail).toContain('desktop session');
+    expect(evaluateMeasurementScope(ref, 'Mobile')[0].detail).toContain('mobile session');
+  });
+
+  it('keeps the detail short — one sentence, not a re-explanation of the whole testing-methodology doc', () => {
+    const ref = { matched: true, host: 'aem.page', ref: 'main', repo: 'site', owner: 'owner', combined: 'main--site--owner' } as const;
+    expect(evaluateMeasurementScope(ref, 'Desktop')[0].detail.length).toBeLessThan(150);
   });
 
   it('produces no finding on an unrecognized (likely custom production) domain', () => {

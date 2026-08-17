@@ -119,26 +119,6 @@ export function PerformanceSection({ onLocate }: SectionProps) {
         </Block>
       )}
 
-      {performanceFindings.length > 0 && (
-        <Block title="Findings" meta={<SeverityCounts findings={performanceFindings} />}>
-          <div class="sk-findings">
-            {performanceFindings.map((f) => (
-              <FindingRow finding={f} onLocate={onLocate} key={f.id} />
-            ))}
-          </div>
-        </Block>
-      )}
-
-      {recommendations.length > 0 && (
-        <Block title="Recommendations">
-          <ol class="sk-reco">
-            {recommendations.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ol>
-        </Block>
-      )}
-
       <div class="sk-linkrow">
         <a
           class="sk-docs"
@@ -163,6 +143,26 @@ export function PerformanceSection({ onLocate }: SectionProps) {
           <ChevronRightIcon size={13} />
         </a>
       </div>
+
+      {performanceFindings.length > 0 && (
+        <Block title="Findings" meta={<SeverityCounts findings={performanceFindings} />}>
+          <div class="sk-findings">
+            {performanceFindings.map((f) => (
+              <FindingRow finding={f} onLocate={onLocate} key={f.id} />
+            ))}
+          </div>
+        </Block>
+      )}
+
+      {recommendations.length > 0 && (
+        <Block title="Recommendations">
+          <ol class="sk-reco">
+            {recommendations.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ol>
+        </Block>
+      )}
     </>
   );
 }
@@ -288,35 +288,36 @@ function CopyUrlRow({ label, url }: { label: string; url: string }) {
   );
 }
 
-const THRUUU_COMPARE_URL = 'https://thruuu.com/free-seo-tools/page-comparison-tool';
+const COMPARE_TOOL_URL = 'https://imswapnilgaikwad.github.io/content-compare/';
 
 /**
  * No auto-diff here — Sanity's own fetch() can't read the counterpart page
  * (CORS; see consistency.ts and CLAUDE.md for why this was tried and
  * removed once already). This hands the author both URLs to copy and a
- * link to a real tool that does the comparison server-side, where CORS
- * doesn't apply. Neither DiffNow nor Thruuu supports pre-filling their
- * form via URL (tested directly — neither reads query params, and
- * submitting doesn't produce a shareable link), so this is copy-paste,
- * not one-click, and that's an honest limit, not an oversight.
+ * link to a separate comparison tool to paste them into. Note: unlike
+ * DiffNow/Thruuu (both tested and confirmed to do a real server-side
+ * fetch), this specific tool was verified to issue zero network requests
+ * to either URL on submit, for two different input pairs, while still
+ * confidently displaying a parity score — its output isn't derived from
+ * either page's actual content. Linked anyway per product decision; keep
+ * that in mind before trusting a result there.
  */
 function PreviewVsLive({ urls }: { urls: ConsistencyUrls | null }) {
-  if (!urls) {
-    return (
-      <p class="sk-empty-note">
-        This page isn't on a recognized aem.page/aem.live (or hlx.page/hlx.live) host, so there's no counterpart environment to compare against.
-      </p>
-    );
-  }
-
   return (
     <>
-      <div class="sk-rows">
-        <CopyUrlRow label={`This page (${urls.currentHost})`} url={urls.currentUrl} />
-        <CopyUrlRow label={`Counterpart (${urls.counterpartHost})`} url={urls.counterpartUrl} />
-      </div>
-      <a class="sk-docs" href={THRUUU_COMPARE_URL} target="_blank" rel="noreferrer">
-        <span>Compare with Thruuu's page comparison tool</span>
+      {urls ? (
+        <div class="sk-rows">
+          <CopyUrlRow label={`This page (${urls.currentHost})`} url={urls.currentUrl} />
+          <CopyUrlRow label={`Counterpart (${urls.counterpartHost})`} url={urls.counterpartUrl} />
+        </div>
+      ) : (
+        <p class="sk-empty-note">
+          This page isn't on a recognized aem.page/aem.live (or hlx.page/hlx.live) host, so there's no counterpart URL to derive — paste both URLs
+          into the tool below yourself.
+        </p>
+      )}
+      <a class="sk-docs" href={COMPARE_TOOL_URL} target="_blank" rel="noreferrer">
+        <span>Compare with Content Compare</span>
         <ChevronRightIcon size={13} />
       </a>
     </>

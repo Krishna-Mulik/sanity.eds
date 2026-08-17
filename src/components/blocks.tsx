@@ -29,7 +29,11 @@ export function FindingRow({ finding, onLocate }: { finding: Finding; onLocate?:
   const canLocate = !canCopy && Boolean(finding.targetSelector);
 
   async function copyPath() {
-    const fullUrl = `${window.location.origin}${finding.path}`;
+    // finding.path is usually origin-relative (/favicon.ico), needing the
+    // current page's origin prepended — but a few findings (like a link to
+    // an external GitHub repo) carry an already-absolute URL, which must be
+    // copied as-is rather than getting this page's origin glued onto it.
+    const fullUrl = /^https?:\/\//i.test(finding.path!) ? finding.path! : `${window.location.origin}${finding.path}`;
     try {
       await navigator.clipboard.writeText(fullUrl);
       setCopied(true);
@@ -63,7 +67,7 @@ export function FindingRow({ finding, onLocate }: { finding: Finding; onLocate?:
             type="button"
             class={`sk-path is-actionable${copied ? ' is-copied' : ''}`}
             onClick={copyPath}
-            title={copied ? 'Copied' : `Copy ${window.location.origin}${finding.path}`}
+            title={copied ? 'Copied' : `Copy ${/^https?:\/\//i.test(finding.path!) ? finding.path! : `${window.location.origin}${finding.path}`}`}
           >
             <span class="sk-path-text">{finding.path}</span>
             <CopyIcon size={13} />
