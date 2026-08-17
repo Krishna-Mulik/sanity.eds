@@ -84,7 +84,18 @@ This drops the built files into **`/tools/sanity/`** in your own repo automatica
 postinstall step — EDS serves pages from your site's own git repo, not from `node_modules`, so
 the files have to live there to be loadable at all. Commit `/tools/sanity/`.
 
-### 2. Wire it into `/scripts/scripts.js`
+### 2. Add `/tools/sanity` to `.eslintignore` and `.hlxignore`
+
+`/tools/sanity/sanity-ui.js` is a ~1.2MB pre-built bundle (Preact + axe-core + the whole panel),
+not authored source — there's nothing useful for either tool to do with it. Linting it is slow
+and reports nothing actionable; Helix's own sync pipeline has no reason to observe it as content
+either. Add one line to each file (create either one if your project doesn't already have it):
+
+```
+/tools/sanity
+```
+
+### 3. Wire it into `/scripts/scripts.js`
 
 The same way <a href="https://www.aem.live/developer/sidekick-development" target="_blank" rel="noopener noreferrer">aem.live's sidekick-development docs</a> show for any event-type plugin. Add
 this to `/scripts/scripts.js` (not a new file — your project's existing one) — the relative path
@@ -108,9 +119,9 @@ function initSanity() {
 initSanity();
 ```
 
-### 3. Register the Sidekick plugin
+### 4. Register the Sidekick plugin
 
-Without this, no "Sanity" button ever appears in Sidekick, so step 2 never fires. This is pushed
+Without this, no "Sanity" button ever appears in Sidekick, so step 3 never fires. This is pushed
 through the Admin API, not committed as a file in your repo:
 
 1. Go to <a href="https://tools.aem.live/tools/admin-edit/index.html" target="_blank" rel="noopener noreferrer">tools.aem.live/tools/admin-edit</a>.
@@ -138,7 +149,7 @@ through the Admin API, not committed as a file in your repo:
 `"environments": ["any"]` is a documented valid value; Sidekick itself already restricts
 event-type plugins to dev/preview/live/prod regardless, so nothing further to configure there.
 
-### 4. Content-Security-Policy (only if you run one)
+### 5. Content-Security-Policy (only if you run one)
 
 Add `style-src 'unsafe-inline'` (or a matching nonce) and `font-src data:` — the panel injects a
 runtime `<style>` tag and base64-embedded fonts. No `script-src` addition needed; everything
