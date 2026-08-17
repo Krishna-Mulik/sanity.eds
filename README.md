@@ -14,14 +14,14 @@ npm i sanity.eds -D
 
 ## 1. Problem
 
-EDS enforces hard [content/code-bus limits](https://www.aem.live/docs/limits) — asset size caps
+EDS enforces hard <a href="https://www.aem.live/docs/limits" target="_blank" rel="noopener noreferrer">content/code-bus limits</a> — asset size caps
 among them. Go over one and the symptom isn't a helpful error: content changes just silently stop
 reflecting on `.live`. Nothing in the authoring UI tells you why. The only trail is the publish
 logs, and even those aren't much help — a line like `image [12, 14, 16] svg over 40kb` tells you
 *that* three SVGs are too big, not *which* three images on the page they actually are. Someone
 then has to manually cross-reference index numbers against the page's DOM by hand, on every
 occurrence, every time this happens. That's true of the whole
-[keeping-it-100](https://www.aem.live/developer/keeping-it-100) checklist too — LCP payload
+<a href="https://www.aem.live/developer/keeping-it-100" target="_blank" rel="noopener noreferrer">keeping-it-100</a> checklist too — LCP payload
 budget, early third-party connections, the preload/`fetchpriority` anti-pattern — none of it is
 visible from the authoring/preview surface itself; you either know the docs by heart and go
 digging, or you ship blind.
@@ -86,8 +86,7 @@ the files have to live there to be loadable at all. Commit `tools/sanity/`.
 
 ### 2. Wire it into `scripts/scripts.js`
 
-The same way [aem.live's sidekick-development
-docs](https://www.aem.live/developer/sidekick-development) show for any event-type plugin. Add
+The same way <a href="https://www.aem.live/developer/sidekick-development" target="_blank" rel="noopener noreferrer">aem.live's sidekick-development docs</a> show for any event-type plugin. Add
 this to `scripts/scripts.js` (not a new file — your project's existing one) — the relative path
 (not `/tools/sanity/index.js`) matters if your project lints imports with
 `eslint-plugin-import`, since `import/no-unresolved` can't resolve a root-absolute path back to
@@ -114,7 +113,7 @@ initSanity();
 Without this, no "Sanity" button ever appears in Sidekick, so step 2 never fires. This is pushed
 through the Admin API, not committed as a file in your repo:
 
-1. Go to [tools.aem.live/tools/admin-edit](https://tools.aem.live/tools/admin-edit/index.html).
+1. Go to <a href="https://tools.aem.live/tools/admin-edit/index.html" target="_blank" rel="noopener noreferrer">tools.aem.live/tools/admin-edit</a>.
 2. In the URL field, paste your site's config endpoint:
    `https://admin.hlx.page/config/<org>/sites/<site>/sidekick.json`
    (substitute your own GitHub org and site name — e.g. `krishna-mulik`/`sanity`).
