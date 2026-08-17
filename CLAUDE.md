@@ -90,6 +90,22 @@ This replaced an earlier eager-mount design (`initSanity()` running unconditiona
 import side effect) that shipped the full ~290KB bundle, and a visible ball, to every visitor —
 including anonymous end users with no Sidekick at all.
 
+`plugin-entry.ts` also exports `mountOnLoad()` — an **opt-in** second entry point, not called by
+anything else in the file, that a consumer can call directly to mount Sanity without the
+`custom:sanity` event at all. It exists because Sidekick gates its *entire* toolbar (this
+plugin's button included) behind the Admin API recognizing the logged-in identity as an
+authorized collaborator on the site — so an unauthorized teammate, or a demo/showcase site's own
+visitors, never see Sanity even with the event-based wiring correct (this surfaced from a real
+showcase site where a second, non-collaborator account got Sidekick's own "Account not
+authorized for this site" and no Sanity icon). `mountOnLoad()` deliberately reverses the
+zero-bytes-to-anonymous-visitors guarantee `mount()` provides — every visitor downloads the full
+UI chunk, not just Sidekick users — so it's documented as a demo-project-only escape hatch in
+README.md, never the default. It waits on `waitForLoadAndLcp()` (page `load` event AND the
+page's first LCP `PerformanceObserver` entry, both required, with a 10s ceiling so a page with no
+qualifying LCP candidate can't hang it forever) before mounting with `autoOpen: false` — unlike
+`mount()`'s `autoOpen: true`, there's no click to "catch up to" here, and forcing the full panel
+open for every visitor with no interaction would be its own bad UX on top of the bytes trade-off.
+
 Once mounted, the panel creates its own `<div id="sanity-panel-host">` with
 `attachShadow({ mode: 'open' })`. All component CSS (`src/lib/tokens.css.ts` +
 `src/lib/panel.css.ts`) is concatenated into one `<style>` and injected into that shadow root.
