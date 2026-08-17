@@ -381,6 +381,7 @@ export const panelCss = /* css */ `
 }
 .sk-row.is-actionable:hover { background: var(--chassis); color: var(--normal); }
 .sk-row.is-actionable:active { background: var(--chassis); }
+.sk-row.is-actionable.is-copied { background: var(--normal-dim); color: var(--normal); }
 
 /* Findings — always open, never an accordion */
 .sk-findings { display: flex; flex-direction: column; gap: 8px; }

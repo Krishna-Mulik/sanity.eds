@@ -277,7 +277,7 @@ export function evaluateSecurity(raw: SecurityRawData): Finding[] {
       id: 'security-analytics-missing',
       title: 'No known analytics or martech script detected',
       detail: 'Checked against a small list of common vendors (GA4, GTM, Adobe Launch/Analytics, Segment, Meta Pixel, HubSpot, etc.) — a custom or unlisted tool would not be caught. If this site is meant to track visitors, confirm instrumentation is in place before go-live.',
-      severity: 'warning',
+      severity: 'critical',
     });
   }
 

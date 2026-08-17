@@ -2,8 +2,8 @@ import { useState } from 'preact/hooks';
 import { Block, FindingRow, MetricCell, AllClear, Loading, SeverityCounts, SubTabs } from '../blocks';
 import { buildSectionDefs } from '../../data/sections';
 import { useScan } from '../../lib/scanContext';
-import type { SectionId, SocialCard, HeadingOutlineItem } from '../../data/types';
-import { ChevronRightIcon, TargetIcon } from '../icons';
+import type { SectionId, SocialCard, HeadingOutlineItem, ConsistencyUrls } from '../../data/types';
+import { ChevronRightIcon, TargetIcon, CopyIcon } from '../icons';
 import { locateOnPage } from '../../lib/locate';
 import { scoreSeverity } from '../../lib/scan/performance';
 import { relativizeUrl } from '../../lib/format';
@@ -169,7 +169,7 @@ export function PerformanceSection({ onLocate }: SectionProps) {
 
 /* ---------------- SEO ---------------- */
 
-const SEO_TABS = ['Findings', 'Metadata', 'Structure', 'Links'] as const;
+const SEO_TABS = ['Findings', 'Metadata', 'Structure', 'Links', 'Preview vs Live'] as const;
 type SeoTab = (typeof SEO_TABS)[number];
 
 /**
@@ -258,12 +258,77 @@ function MissingAltImages({ images, onLocate }: { images: { selector: string; sr
   );
 }
 
+/**
+ * A labeled URL with a one-click copy-to-clipboard action — used by the
+ * Preview vs Live tab to hand the author both URLs to paste into a real
+ * comparison tool, since Sanity's own fetch() can't read the counterpart
+ * page itself (see consistency.ts).
+ */
+function CopyUrlRow({ label, url }: { label: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API unavailable or permission denied — nothing safe to fall back to.
+    }
+  }
+
+  return (
+    <button type="button" class={`sk-row is-actionable${copied ? ' is-copied' : ''}`} onClick={copy} title={copied ? 'Copied' : `Copy ${url}`}>
+      <div class="sk-row-main">
+        <span class="sk-row-detail">{label}</span>
+        <span class="sk-row-path">{url}</span>
+      </div>
+      <CopyIcon size={13} />
+    </button>
+  );
+}
+
+const THRUUU_COMPARE_URL = 'https://thruuu.com/free-seo-tools/page-comparison-tool';
+
+/**
+ * No auto-diff here — Sanity's own fetch() can't read the counterpart page
+ * (CORS; see consistency.ts and CLAUDE.md for why this was tried and
+ * removed once already). This hands the author both URLs to copy and a
+ * link to a real tool that does the comparison server-side, where CORS
+ * doesn't apply. Neither DiffNow nor Thruuu supports pre-filling their
+ * form via URL (tested directly — neither reads query params, and
+ * submitting doesn't produce a shareable link), so this is copy-paste,
+ * not one-click, and that's an honest limit, not an oversight.
+ */
+function PreviewVsLive({ urls }: { urls: ConsistencyUrls | null }) {
+  if (!urls) {
+    return (
+      <p class="sk-empty-note">
+        This page isn't on a recognized aem.page/aem.live (or hlx.page/hlx.live) host, so there's no counterpart environment to compare against.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <div class="sk-rows">
+        <CopyUrlRow label={`This page (${urls.currentHost})`} url={urls.currentUrl} />
+        <CopyUrlRow label={`Counterpart (${urls.counterpartHost})`} url={urls.counterpartUrl} />
+      </div>
+      <a class="sk-docs" href={THRUUU_COMPARE_URL} target="_blank" rel="noreferrer">
+        <span>Compare with Thruuu's page comparison tool</span>
+        <ChevronRightIcon size={13} />
+      </a>
+    </>
+  );
+}
+
 export function SeoSection({ onLocate }: SectionProps) {
   const { result } = useScan();
   const [tab, setTab] = useState<SeoTab>('Findings');
   if (!result) return <Loading label="Checking SEO signals…" />;
 
-  const { seoFindings, seoPageInfo, linkStats, linkFindings } = result;
+  const { seoFindings, seoPageInfo, linkStats, linkFindings, consistencyUrls } = result;
   const origin = window.location.origin;
 
   const infoRows: { label: string; value: string }[] = [
@@ -389,6 +454,12 @@ export function SeoSection({ onLocate }: SectionProps) {
             </Block>
           )}
         </>
+      )}
+
+      {tab === 'Preview vs Live' && (
+        <Block title="Preview vs live" meta="copy & compare">
+          <PreviewVsLive urls={consistencyUrls} />
+        </Block>
       )}
     </>
   );
@@ -567,17 +638,29 @@ export function TechnicalSection({ onLocate }: SectionProps) {
       )}
 
       {tab === 'Block Structure' && (
-        <Block title="Block structure" meta="EDS block status">
-          {result.blockFindings.length > 0 ? (
-            <div class="sk-findings">
-              {result.blockFindings.map((f) => (
-                <FindingRow finding={f} onLocate={onLocate} key={f.id} />
-              ))}
-            </div>
-          ) : (
-            <AllClear label="Every block on the page loaded cleanly" />
+        <>
+          <Block title="Block structure" meta="EDS block status">
+            {result.blockFindings.length > 0 ? (
+              <div class="sk-findings">
+                {result.blockFindings.map((f) => (
+                  <FindingRow finding={f} onLocate={onLocate} key={f.id} />
+                ))}
+              </div>
+            ) : (
+              <AllClear label="Every block on the page loaded cleanly" />
+            )}
+          </Block>
+
+          {result.maxCellsFindings.length > 0 && (
+            <Block title="Block field limits" meta="xwalk/max-cells">
+              <div class="sk-findings">
+                {result.maxCellsFindings.map((f) => (
+                  <FindingRow finding={f} onLocate={onLocate} key={f.id} />
+                ))}
+              </div>
+            </Block>
           )}
-        </Block>
+        </>
       )}
     </>
   );

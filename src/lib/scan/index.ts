@@ -12,6 +12,8 @@ import {
   evaluateJsonSheetMetrics,
 } from './siteLimits';
 import { gatherBlockStructure, gatherEdsRuntimeDetected, evaluateBlockStructure } from './blockStructure';
+import { gatherComponentModels, evaluateMaxCells } from './maxCells';
+import { computeConsistencyUrls } from './consistency';
 import { gatherSecurity, evaluateSecurity } from './security';
 import { gatherSeo, evaluateSeo, buildSeoPageInfo, checkCanonicalStatus, evaluateCanonicalStatus } from './seo';
 import { gatherFaviconLink, checkFavicon, evaluateFavicon } from './favicon';
@@ -59,6 +61,7 @@ export async function runScan(): Promise<ScanResult> {
   const faviconRaw = gatherFaviconLink();
   const edsRuntimeDetected = gatherEdsRuntimeDetected();
   const imageAltInfo = gatherImageAltInfo();
+  const consistencyUrls = computeConsistencyUrls(refInfo);
 
   // Everything network- or timing-bound runs in parallel, each individually
   // bounded, so one slow check can't stall the whole scan.
@@ -78,6 +81,7 @@ export async function runScan(): Promise<ScanResult> {
     robotsInfo,
     notFoundInfo,
     canonicalCheck,
+    componentModelsRaw,
   ] = await Promise.all([
     gatherLimits(document, window, linkInfos),
     gatherSecurity(),
@@ -90,10 +94,11 @@ export async function runScan(): Promise<ScanResult> {
     gatherJsonSheet('/query-index.json'),
     gatherJsonSheet('/metadata.json'),
     gatherJsonSheet('/placeholders.json'),
-    checkFavicon(faviconRaw),
+    checkFavicon(faviconRaw, window.location.origin),
     gatherRobots(),
     gatherNotFoundCheck(),
     checkCanonicalStatus(seoRaw),
+    gatherComponentModels(),
   ]);
 
   const pageOrigin = window.location.origin;
@@ -134,6 +139,7 @@ export async function runScan(): Promise<ScanResult> {
   const siteLimitFindings = evaluateSiteLimits(refInfo, sitemapInfo, redirectsInfo, jsonSheets, robotsInfo, notFoundInfo);
   const jsonSheetMetrics = evaluateJsonSheetMetrics(jsonSheets);
   const blockFindings = evaluateBlockStructure(blocks, edsRuntimeDetected);
+  const maxCellsFindings = evaluateMaxCells(componentModelsRaw);
   const accessibilityFindings = [
     ...evaluateAccessibility(a11yViolations),
     ...evaluateHeadingStructure(seoRaw.headings),
@@ -148,7 +154,7 @@ export async function runScan(): Promise<ScanResult> {
     seo: worstSeverity(seoFindings.map((f) => f.severity)),
     social: worstSeverity(socialFindings.map((f) => f.severity)),
     security: worstSeverity(securityFindings.map((f) => f.severity)),
-    technical: worstSeverity([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
+    technical: worstSeverity([...limitFindings, ...siteLimitFindings, ...blockFindings, ...maxCellsFindings, ...jsonSheetMetrics].map((f) => f.severity)),
     accessibility: worstSeverity(accessibilityFindings.map((f) => f.severity)),
   };
 
@@ -157,7 +163,7 @@ export async function runScan(): Promise<ScanResult> {
     seo: tally(seoFindings.map((f) => f.severity)),
     social: tally(socialFindings.map((f) => f.severity)),
     security: tally(securityFindings.map((f) => f.severity)),
-    technical: tally([...limitFindings, ...siteLimitFindings, ...blockFindings, ...jsonSheetMetrics].map((f) => f.severity)),
+    technical: tally([...limitFindings, ...siteLimitFindings, ...blockFindings, ...maxCellsFindings, ...jsonSheetMetrics].map((f) => f.severity)),
     accessibility: tally(accessibilityFindings.map((f) => f.severity)),
   };
 
@@ -167,7 +173,7 @@ export async function runScan(): Promise<ScanResult> {
     social: socialFindings.filter((f) => f.severity !== 'normal').length,
     security: securityFindings.length,
     technical:
-      [...limitFindings, ...siteLimitFindings, ...blockFindings].filter((f) => f.severity !== 'idle').length +
+      [...limitFindings, ...siteLimitFindings, ...blockFindings, ...maxCellsFindings].filter((f) => f.severity !== 'idle').length +
       jsonSheetMetrics.filter((m) => m.severity === 'critical' || m.severity === 'warning').length,
     accessibility: accessibilityFindings.length,
   };
@@ -194,7 +200,9 @@ export async function runScan(): Promise<ScanResult> {
     siteLimitFindings,
     jsonSheetMetrics,
     blockFindings,
+    maxCellsFindings,
     accessibilityFindings,
+    consistencyUrls,
     sectionSeverity,
     sectionBreakdown,
     sectionIssueCount,

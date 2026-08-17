@@ -147,27 +147,34 @@ exponential-decelerate easing; bounce/elastic easing is intentionally avoided ev
 
 Scanning is real. `src/lib/scan/` has one module per check domain (`limits.ts`, `siteLimits.ts`,
 `security.ts`, `seo.ts`, `structuredData.ts`, `social.ts`, `links.ts`, `favicon.ts`,
-`performance.ts`, `runtimeErrors.ts`, `accessibility.ts`, `blockStructure.ts`), each following
-the `gatherX()` (impure) / `evaluateX()` (pure, tested) split described under Commands above.
+`performance.ts`, `runtimeErrors.ts`, `accessibility.ts`, `blockStructure.ts`, `consistency.ts`),
+each following the `gatherX()` (impure) / `evaluateX()` (pure, tested) split described under
+Commands above.
 
-**Preview vs Live content comparison was tried and removed.** A `consistency.ts` module (and a
-"Preview vs Live" tab in the SEO section) once fetched this page's counterpart on the other EDS
-environment (`.aem.page` ⟷ `.aem.live`) and diffed title/description/visible-text blocks,
-following the same fetch-with-honest-fallback pattern as every other cross-origin check (og:image,
-JSON sheets, canonical, favicon). In practice it almost never worked: `.aem.live`/`.aem.page`
-send no `Access-Control-Allow-Origin` header by default, so the cross-origin `fetch()` fails for
-essentially every real site out of the box — confirmed against a real deployed site, not just
-reasoned about (`curl`/server-side HTTP has no such restriction and diffed the two pages fine,
-including a genuine `<h1>`→`<h2>` drift on that page; the point was specifically that Sanity's
-own `fetch()`, running as embedded page JS in a visitor's real browser, cannot do the same thing
-— CORS restricts *script-initiated* cross-origin reads, not requests in general). Fixing it is
-possible but requires the *site owner* to add a `headers.json` CORS rule
-([aem.live/docs/custom-headers](https://www.aem.live/docs/custom-headers)) — not something Sanity
-controls, and not something most sites will ever configure. Rather than ship a check that reads
-"Not checked" for nearly everyone, it was removed entirely instead of left as permanent
-near-dead weight. If revisited, the real fix is architectural (a small proxy service Sanity's
-authors host, since server-to-server HTTP has no CORS restriction), not a client-side workaround
-— there isn't one.
+**Preview vs Live content comparison went through two designs before landing on the current one
+— a copy-and-link-out, not an auto-diff.** The first version's `consistency.ts` fetched this
+page's counterpart on the other EDS environment (`.aem.page` ⟷ `.aem.live`) directly and diffed
+title/description/visible-text blocks, following the same fetch-with-honest-fallback pattern as
+every other cross-origin check (og:image, JSON sheets, canonical, favicon). It was removed after
+confirming, against a real deployed site, that it almost never works: `.aem.live`/`.aem.page` send
+no `Access-Control-Allow-Origin` header by default, so the cross-origin `fetch()` fails out of the
+box for essentially every real site (`curl`/server-side HTTP has no such restriction and diffed
+the two pages fine, including a genuine `<h1>`→`<h2>` drift on that page — proving the *content*
+comparison itself is valuable, just not reachable from a browser-embedded `fetch()`, which is
+exactly what CORS restricts). Fixing that properly needs the *site owner* to add a `headers.json`
+CORS rule ([aem.live/docs/custom-headers](https://www.aem.live/docs/custom-headers)) — not
+something Sanity controls or most sites will ever configure — so rather than leave a check that
+reads "Not checked" for nearly everyone, or stand up a proxy service (the only real architectural
+fix, and a materially bigger project than "a client-side script with zero infrastructure"),
+`consistency.ts` now does neither: `computeConsistencyUrls()` is a pure hostname swap (no fetch,
+so no CORS to hit) producing this page's URL and its counterpart's, and the "Preview vs Live" tab
+just hands the author both as one-click-copy rows plus a link to
+[Thruuu's free page comparison tool](https://thruuu.com/free-seo-tools/page-comparison-tool) — a
+real third-party tool that does the actual diffing server-side, where CORS doesn't apply. Neither
+Thruuu nor DiffNow (also evaluated) supports pre-filling their compare form via URL — confirmed by
+testing both directly: submitting doesn't produce a shareable/query-string URL, and pre-loading
+with guessed param names doesn't populate their fields either — so this is deliberately copy-paste
+rather than a fake "one-click" promise the tools don't actually support.
 `favicon.ts` checks the `<link rel="icon">` in `<head>` actually resolves, not just that the tag
 exists — folded into SEO findings (not Security/Technical) since that's where an author looks for
 `<head>` link checks alongside canonical/viewport. It's probed with an `Image()` load (same
@@ -329,6 +336,32 @@ question) and gave it a `Limits`/`Block Structure` tab split — the `SectionId`
 block-status lifecycle with a healthy `cards` block and a deliberately broken `reviews` block
 (`data-block-status="error"`) so this has something real to prove itself against; a real EDS site
 sets these attributes itself once `aem.js` runs.
+
+`maxCells.ts` reimplements [eslint-plugin-xwalk](https://github.com/adobe-rnd/eslint-plugin-xwalk)'s
+`xwalk/max-cells` rule — a build-time ESLint rule (not a JSON schema field) that lints a
+Universal-Editor/document-based-authoring ("xwalk") project's `component-models.json` to catch a
+block whose authoring model has too many editable fields, since a Word/Google Docs table gets
+unwieldy past a handful of columns. Its counting logic (field collapsing on
+Text/Title/Type/Alt/MimeType suffixes, then underscore-prefix grouping — `imageAlt` collapses into
+`image`, `cta_text`/`cta_link` collapse into one `cta` group) was reimplemented line-for-line and
+verified against the real rule's own test fixtures (`tests/rules/max-cells/` in that repo — same
+model shapes, same expected cell counts for every case, copied verbatim into `maxCells.test.ts`).
+`gatherComponentModels()` fetches `/component-models.json` and `/component-definition.json`
+same-origin — the same two files a real xwalk site publishes at its root (confirmed against the
+[adobe-rnd/aem-boilerplate-xwalk](https://github.com/adobe-rnd/aem-boilerplate-xwalk) reference
+repo) — with the usual honest-fallback pattern: a site that doesn't use xwalk (plain Word/
+Google-Docs authoring, still the common case) simply doesn't have these files, so
+`evaluateMaxCells()` quietly returns no findings rather than a permanent "not applicable" note on
+every non-xwalk site. One thing this can't replicate: a project's real ESLint config can override
+the default limit per block (this project's own `.eslintrc` sets `section: 30`, for instance) —
+that's a dev-only build file never shipped to the live page, so every block here is checked
+against the rule's own documented default of 4 cells, and each finding says so explicitly rather
+than implying it knows the site's real configured threshold. Findings are `copyable` (pointing at
+`/component-models.json`) rather than locatable, same reasoning as the JSON size-limit findings in
+`limits.ts` — a model definition has no DOM element to scroll to. Rendered in the Technical section's
+existing "Block Structure" tab, in its own "Block field limits" block alongside the
+`data-block-status` findings — both are "does this EDS project's authoring/delivery configuration
+hold up" questions, just at different layers (runtime block health vs. authoring-model shape).
 
 `src/data/sections.tsx` exports `buildSectionDefs(result: ScanResult | null): SectionDef[]` —
 add a new section's registry entry here (id, label, icon, severity/count derivation). It's a

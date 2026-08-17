@@ -52,9 +52,9 @@ describe('evaluateSecurity', () => {
   });
 
   describe('evaluateSecurity — analytics detection', () => {
-    it('warns when no known analytics/martech vendor is detected', () => {
+    it('flags as critical when no known analytics/martech vendor is detected', () => {
       const findings = evaluateSecurity(base({ analyticsVendors: [] }));
-      expect(findings.find((f) => f.id === 'security-analytics-missing')?.severity).toBe('warning');
+      expect(findings.find((f) => f.id === 'security-analytics-missing')?.severity).toBe('critical');
     });
 
     it('notes (not warns) detected vendors, listed by name', () => {

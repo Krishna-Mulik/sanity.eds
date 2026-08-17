@@ -108,6 +108,20 @@ export interface SeoPageInfo {
   imagesMissingAlt: { selector: string; src: string }[];
 }
 
+/**
+ * This page's URL alongside its counterpart on the other EDS environment
+ * (.aem.page <-> .aem.live) — a plain hostname swap, no fetch involved (see
+ * consistency.ts for why: cross-origin fetch is CORS-blocked on these hosts
+ * for essentially every real site). `null` when the current host isn't a
+ * recognized preview/live host at all.
+ */
+export interface ConsistencyUrls {
+  currentUrl: string;
+  currentHost: 'aem.page' | 'aem.live' | 'hlx.page' | 'hlx.live';
+  counterpartUrl: string;
+  counterpartHost: 'aem.page' | 'aem.live' | 'hlx.page' | 'hlx.live';
+}
+
 /** Everything one full scan produced, feeding every section of the panel. */
 export interface ScanResult {
   performanceScore: number;
@@ -129,7 +143,10 @@ export interface ScanResult {
   siteLimitFindings: Finding[];
   jsonSheetMetrics: Metric[];
   blockFindings: Finding[];
+  /** eslint-plugin-xwalk's xwalk/max-cells rule, reimplemented against a live xwalk site's component-models.json — empty on non-xwalk sites. */
+  maxCellsFindings: Finding[];
   accessibilityFindings: Finding[];
+  consistencyUrls: ConsistencyUrls | null;
   siteInfo: SiteIdentity | null;
   sectionSeverity: Record<CheckedSectionId, Severity>;
   sectionBreakdown: Record<CheckedSectionId, { critical: number; warning: number }>;

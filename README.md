@@ -47,6 +47,10 @@ to know about:
   against the DOM by hand.
 - **Block Structure** — reads `data-block-status`, the attribute `scripts/aem.js` sets on every
   block as it loads, to catch a block that rendered nothing before any visitor does.
+- **Preview vs Live** — one-click-copy URLs for this page and its counterpart on the other EDS
+  environment, plus a link to a real comparison tool. Not an auto-diff: `.aem.page`/`.aem.live`
+  don't grant CORS to a browser-embedded `fetch()`, so this hands you the URLs instead of failing
+  silently.
 - **Keeping it 100** — LCP payload budget, early third-party connections, and the
   preload/`fetchpriority` anti-pattern the docs call out as *counter-intuitive* (a generic tool
   would flag it as a win, not a problem).
