@@ -149,29 +149,6 @@ through the Admin API, not committed as a file in your repo:
 `"environments": ["any"]` is a documented valid value; Sidekick itself already restricts
 event-type plugins to dev/preview/live/prod regardless, so nothing further to configure there.
 
-### Optional: mount without Sidekick at all
-
-Sidekick gates its entire toolbar — this plugin's button included — behind the Admin API
-recognizing the logged-in identity as an authorized collaborator on the site. That means step 3
-above only ever shows Sanity to people who are both using Sidekick **and** already have real
-access to the project; an unauthorized teammate, or a visitor to a demo/portfolio site, never
-sees it, even with steps 3 and 4 wired up correctly.
-
-If you want Sanity visible to every visitor regardless — e.g. a personal showcase project —
-call `mountOnLoad()` instead of (or alongside) the `custom:sanity` listener:
-
-```js
-const { mountOnLoad } = await import('../tools/sanity/index.js');
-mountOnLoad();
-```
-
-`mountOnLoad()` waits for both the page's `load` event and its first Largest Contentful Paint
-candidate before mounting, so it never competes with the page's own critical rendering path —
-but it **reverses the zero-bytes-to-anonymous-visitors guarantee** the event-based `mount()` is
-built around: every visitor downloads the full ~290KB gzip panel bundle, not just Sidekick
-users. It's opt-in for exactly that reason — reach for it on a demo project that wants Sanity
-always visible, not on a real production EDS site.
-
 ### 5. Content-Security-Policy (only if you run one)
 
 Add `style-src 'unsafe-inline'` (or a matching nonce) and `font-src data:` — the panel injects a
