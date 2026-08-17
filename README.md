@@ -80,14 +80,14 @@ leak in and nothing Sanity does can leak out.
 npm i sanity.eds -D
 ```
 
-This drops the built files into **`tools/sanity/`** in your own repo automatically via a
+This drops the built files into **`/tools/sanity/`** in your own repo automatically via a
 postinstall step — EDS serves pages from your site's own git repo, not from `node_modules`, so
-the files have to live there to be loadable at all. Commit `tools/sanity/`.
+the files have to live there to be loadable at all. Commit `/tools/sanity/`.
 
-### 2. Wire it into `scripts/scripts.js`
+### 2. Wire it into `/scripts/scripts.js`
 
 The same way <a href="https://www.aem.live/developer/sidekick-development" target="_blank" rel="noopener noreferrer">aem.live's sidekick-development docs</a> show for any event-type plugin. Add
-this to `scripts/scripts.js` (not a new file — your project's existing one) — the relative path
+this to `/scripts/scripts.js` (not a new file — your project's existing one) — the relative path
 (not `/tools/sanity/index.js`) matters if your project lints imports with
 `eslint-plugin-import`, since `import/no-unresolved` can't resolve a root-absolute path back to
 a file on disk:
@@ -116,7 +116,9 @@ through the Admin API, not committed as a file in your repo:
 1. Go to <a href="https://tools.aem.live/tools/admin-edit/index.html" target="_blank" rel="noopener noreferrer">tools.aem.live/tools/admin-edit</a>.
 2. In the URL field, paste your site's config endpoint:
    `https://admin.hlx.page/config/<org>/sites/<site>/sidekick.json`
-   (substitute your own GitHub org and site name — e.g. `krishna-mulik`/`sanity`).
+   (substitute your own GitHub org and site name, both **lowercase** — e.g. `krishna-mulik`/
+   `sanity` — even if the org or repo name has capitals on GitHub itself, the Admin API expects
+   the lowercase form here).
 3. Set the **Body** to:
    ```json
    {
@@ -140,7 +142,7 @@ event-type plugins to dev/preview/live/prod regardless, so nothing further to co
 
 Add `style-src 'unsafe-inline'` (or a matching nonce) and `font-src data:` — the panel injects a
 runtime `<style>` tag and base64-embedded fonts. No `script-src` addition needed; everything
-loads same-origin from `tools/sanity/`.
+loads same-origin from `/tools/sanity/`.
 
 ### Updating later
 
@@ -152,7 +154,7 @@ node node_modules/sanity.eds/scripts/postinstall.js
 Run both, every time, as one step — not just the first one. This isn't a "just in case": npm's
 own postinstall for `sanity.eds` isn't guaranteed to fire on every update (when npm decides
 nothing in the dependency tree needs to change, it skips install scripts entirely, even if
-`tools/sanity/` happens to be missing or stale for an unrelated reason), so the second command
-is what actually guarantees `tools/sanity/` reflects what just got installed. It's cheap and
+`/tools/sanity/` happens to be missing or stale for an unrelated reason), so the second command
+is what actually guarantees `/tools/sanity/` reflects what just got installed. It's cheap and
 side-effect-free to run unconditionally — it only ever copies 3 files, nothing else. Commit the
 resulting diff.
