@@ -142,8 +142,36 @@ describe('evaluateSiteLimits — always-present not-checkable notes', () => {
 
   it('surfaces the actual documented limit numbers, not just "not checkable", for Code Sync and the Admin API', () => {
     const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
-    expect(findings.find((f) => f.id === 'site-code-sync-not-checkable')?.allowed).toBe('500 files, 10MB/file per ref, 100 active refs');
-    expect(findings.find((f) => f.id === 'site-admin-api-not-checkable')?.allowed).toBe('10 requests/second per project, 500 pending bulk-API jobs');
+    const codeSync = findings.find((f) => f.id === 'site-code-sync-not-checkable');
+    const adminApi = findings.find((f) => f.id === 'site-admin-api-not-checkable');
+    expect(codeSync?.detail).toContain('500 files');
+    expect(codeSync?.detail).toContain('10MB per file');
+    expect(codeSync?.detail).toContain('100 active refs');
+    expect(adminApi?.detail).toContain('10 requests/second');
+    expect(adminApi?.detail).toContain('500 pending bulk-API jobs');
+  });
+
+  it('keeps these notes description-only — no measured/allowed grid, which read as a nonsensical "Not checked of <limits> allowed" row', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    for (const id of ['site-code-sync-not-checkable', 'site-admin-api-not-checkable', 'site-byom-not-checkable']) {
+      const finding = findings.find((f) => f.id === id);
+      expect(finding?.measured).toBeUndefined();
+      expect(finding?.allowed).toBeUndefined();
+    }
+  });
+
+  it('labels these as "Info" rather than the default "Not checked" idle badge — they are standing notes, not a failed check attempt', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    for (const id of ['site-code-sync-not-checkable', 'site-admin-api-not-checkable', 'site-byom-not-checkable']) {
+      expect(findings.find((f) => f.id === id)?.severityLabel).toBe('Info');
+    }
+  });
+
+  it('keeps the detail short enough to actually read at a glance', () => {
+    const findings = evaluateSiteLimits(ref(), sitemap(), redirects());
+    for (const id of ['site-code-sync-not-checkable', 'site-admin-api-not-checkable', 'site-byom-not-checkable']) {
+      expect(findings.find((f) => f.id === id)!.detail.length).toBeLessThan(150);
+    }
   });
 
   it('links to the real GitHub repo as a copyable way to check Code Sync usage, when the ref/repo/owner are known', () => {

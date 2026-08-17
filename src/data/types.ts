@@ -15,6 +15,14 @@ export interface Finding {
   /** One line of plain language: what is wrong and why it matters. */
   detail: string;
   severity: Severity;
+  /**
+   * Overrides the badge text normally derived from `severity` (e.g. "Info"
+   * instead of the default "Not checked" for `idle`) — for findings that
+   * aren't really a "we tried and couldn't check" state, just a standing
+   * informational note. Severity itself (and its color/rollup behavior)
+   * is unchanged; only the label shown to the reader differs.
+   */
+  severityLabel?: string;
   /** Asset path or DOM location, shown as monospace text and used to locate. */
   path?: string;
   /** Selector on the host page, when the finding points at a real element. */

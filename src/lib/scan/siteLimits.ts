@@ -402,13 +402,9 @@ export function evaluateSiteLimits(
   findings.push({
     id: 'site-code-sync-not-checkable',
     title: 'GitHub Code Sync file-count and size-per-ref limits are not checkable from this page',
-    detail:
-      ref.matched && ref.owner && ref.repo && ref.ref
-        ? "Needs GitHub API access this in-page scan doesn't have. Way to check: browse the repo itself — file count and individual file sizes are visible directly in GitHub's file tree (link below)."
-        : "Needs GitHub API access this in-page scan doesn't have, and this page's own URL isn't a standard preview/live host, so there's no repo to link to either. Way to check: browse the repo's file tree directly on GitHub.",
+    detail: "Limit: 500 files, 10MB per file per ref, 100 active refs. Not checkable here — see the repo's file tree on GitHub instead.",
     severity: 'idle',
-    measured: 'Not checked',
-    allowed: '500 files, 10MB/file per ref, 100 active refs',
+    severityLabel: 'Info',
     path: ref.matched && ref.owner && ref.repo && ref.ref ? `https://github.com/${ref.owner}/${ref.repo}/tree/${ref.ref}` : undefined,
     copyable: ref.matched && ref.owner && ref.repo && ref.ref ? true : undefined,
   });
@@ -416,19 +412,17 @@ export function evaluateSiteLimits(
   findings.push({
     id: 'site-admin-api-not-checkable',
     title: 'Admin API rate limits are not checkable from this page',
-    detail:
-      "Needs an Admin API token this plugin doesn't have — and there's no dashboard to check usage against ahead of time either. Way to check: watch for HTTP 429 responses when you call the Admin API yourself; that's the only signal this limit gives.",
+    detail: 'Limit: 10 requests/second per project, 500 pending bulk-API jobs. Not checkable here — watch for HTTP 429 responses when calling the Admin API.',
     severity: 'idle',
-    measured: 'Not checked',
-    allowed: '10 requests/second per project, 500 pending bulk-API jobs',
+    severityLabel: 'Info',
   });
 
   findings.push({
     id: 'site-byom-not-checkable',
     title: 'BYOM content source limits are not checkable from this page',
-    detail:
-      "Whether this site even uses a Bring-Your-Own-Markup content source is a repo-config fact this in-page scan can't see, let alone that source's own response times or image counts. Way to check: look for a content-source mapping in your project's fstab.yaml — if BYOM is configured there, its limits are whatever that source's own docs say, since aem.live doesn't govern them.",
+    detail: 'Limits depend on the configured content source, not aem.live — check fstab.yaml. Not checkable from this page.',
     severity: 'idle',
+    severityLabel: 'Info',
   });
 
   return findings;

@@ -48,7 +48,7 @@ export function FindingRow({ finding, onLocate }: { finding: Finding; onLocate?:
       <div class="sk-finding-head">
         <span class="sk-finding-dot" aria-hidden="true" />
         <h4 class="sk-finding-title">{finding.title}</h4>
-        <span class="sk-finding-sev">{SEVERITY_LABEL[finding.severity]}</span>
+        <span class="sk-finding-sev">{finding.severityLabel ?? SEVERITY_LABEL[finding.severity]}</span>
       </div>
       <p class="sk-finding-detail">{finding.detail}</p>
 

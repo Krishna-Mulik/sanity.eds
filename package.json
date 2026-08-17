@@ -1,7 +1,7 @@
 {
   "name": "sanity.eds",
   "private": false,
-  "version": "1.3.3",
+  "version": "1.3.4",
   "type": "module",
   "description": "AEM Sidekick plugin for Edge Delivery Services (EDS) sites — scans a live page for performance, SEO, security, accessibility, and aem.live-limits issues, with click-to-locate on the actual offending element.",
   "keywords": [
